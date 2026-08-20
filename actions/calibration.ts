@@ -6,7 +6,7 @@ import { prisma } from "@/lib/core/prisma";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
 import { requireUser } from "@/lib/core/auth/user";
 import { SCHEMA_BY_KEY } from "@/lib/reactor-schema";
-import type { ActionResult } from "@/actions/reactors";
+import type { ActionResult } from "@/lib/action-result";
 
 export interface CalibrationPoint {
     /** Uncalibrated reading, taken from the /raw topic. */
@@ -150,6 +150,7 @@ export async function calibrateDeviceAction(
         };
     }
 
-    revalidatePath(`/reactors/${device.projectId}`);
+    revalidatePath(`/devices/${device.id}`);
+    if (device.projectId) revalidatePath(`/projects/${device.projectId}`);
     return { success: true };
 }

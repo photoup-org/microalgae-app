@@ -2,33 +2,64 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Wind } from "lucide-react";
-import { setValveAction } from "@/actions/reactors";
+import { Wind, TriangleAlert } from "lucide-react";
+import { setValveAction, setValveControlAction } from "@/actions/devices";
 import { useMqttStore } from "@/hooks/useMqttStore";
 import { VALVE_METRIC } from "@/lib/reactor-schema";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
+type ManualControl = { mode: "manual"; manual: { maxOpenSeconds: number } };
+type AutomaticControl = {
+    mode: "automatic";
+    automatic: {
+        phOpenThreshold: number;
+        phCloseThreshold: number;
+        burstGainSeconds: number;
+        minBurstSeconds: number;
+        maxBurstSeconds: number;
+        dwellSeconds: number;
+    };
+};
+type ValveControl = ManualControl | AutomaticControl;
+
+const DEFAULT_CONTROL: ValveControl = { mode: "manual", manual: { maxOpenSeconds: 15 } };
+const DEFAULT_AUTOMATIC: AutomaticControl["automatic"] = {
+    phOpenThreshold: 7.5,
+    phCloseThreshold: 7.0,
+    burstGainSeconds: 2,
+    minBurstSeconds: 1,
+    maxBurstSeconds: 10,
+    dwellSeconds: 20,
+};
 
 interface ValvePanelProps {
     deviceId: string;
     serialNumber: string;
     /** Last commanded state from Device.config, for the server-rendered first paint. */
     initialOpen: boolean;
+    initialControl: ValveControl | null;
+    /** Automatic mode is refused server-side without one - see setValveControlAction. */
+    hasPhCalibration: boolean;
 }
 
 /** How long telemetry may be silent before the reported state is treated as stale. */
 const STALE_AFTER_MS = 30_000;
 
 /**
- * Manual control of the CO2 electrovalve.
+ * Valve control: manual on/off (with a safety time limit) and automatic pH
+ * hysteresis + burst dosing.
  *
- * Three distinct states, deliberately not collapsed into one boolean:
- *  - commanded: what we last asked for (optimistic, from the Server Action)
- *  - confirmed: what the node reports via the valve_open telemetry channel
- *  - stale: no telemetry recently, so "confirmed" is not trustworthy
- *
- * A command is fire-and-forget over MQTT with no ack, so showing the commanded
- * value as though it were reality would be a lie. Divergence is surfaced instead.
+ * This panel only pushes SETPOINTS. Every actual safety limit - the manual
+ * timeout, the burst duration, the dwell between bursts - is enforced on the
+ * ESP32 firmware against its own local pH reading, not by anything running here.
+ * If the network drops while the valve is open, the firmware still closes it.
  */
-export function ValvePanel({ deviceId, serialNumber, initialOpen }: ValvePanelProps) {
+export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl, hasPhCalibration }: ValvePanelProps) {
     const [commanded, setCommanded] = useState(initialOpen);
     const [pending, startTransition] = useTransition();
     const [lastSeen, setLastSeen] = useState<number | null>(null);
@@ -42,8 +73,6 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen }: ValvePanelPr
         if (confirmed !== null) setLastSeen(Date.now());
     }, [confirmed, live]);
 
-    // Staleness is time-based, so it needs a tick rather than only re-evaluating
-    // when a message happens to arrive.
     useEffect(() => {
         const id = setInterval(() => {
             setIsStale(lastSeen !== null && Date.now() - lastSeen > STALE_AFTER_MS);
@@ -53,16 +82,13 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen }: ValvePanelPr
 
     function toggle(next: boolean) {
         setCommanded(next);
-
         startTransition(async () => {
             const result = await setValveAction(deviceId, next);
-
             if (!result.success) {
-                setCommanded(!next); // roll back the optimistic flip
+                setCommanded(!next);
                 toast.error(result.error);
                 return;
             }
-
             toast.success(next ? "Comando enviado: abrir válvula." : "Comando enviado: fechar válvula.");
         });
     }
@@ -70,48 +96,41 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen }: ValvePanelPr
     const diverged = confirmed !== null && !isStale && confirmed !== commanded && !pending;
 
     return (
-        <section className="rounded-lg border border-border bg-surface p-5">
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <Wind className="h-5 w-5 text-accent" aria-hidden />
-                    <div>
-                        <h2 className="font-medium">Válvula de CO2</h2>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                            <ValveStatusText
-                                confirmed={confirmed}
-                                isStale={isStale}
-                                pending={pending}
-                            />
-                        </p>
-                    </div>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Wind className="size-4 text-brand" aria-hidden />
+                    Válvula de CO2
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs text-muted-foreground">
+                        <ValveStatusText confirmed={confirmed} isStale={isStale} pending={pending} />
+                    </p>
+                    <Switch
+                        checked={commanded}
+                        disabled={pending}
+                        onCheckedChange={toggle}
+                        aria-label="Abrir ou fechar a válvula de CO2"
+                    />
                 </div>
 
-                <button
-                    role="switch"
-                    aria-checked={commanded}
-                    aria-label="Abrir ou fechar a válvula de CO2"
-                    disabled={pending}
-                    onClick={() => toggle(!commanded)}
-                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                        commanded ? "bg-accent" : "bg-surface-muted border border-border"
-                    }`}
-                >
-                    <span
-                        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                            commanded ? "translate-x-6" : "translate-x-1"
-                        }`}
-                    />
-                </button>
-            </div>
+                {diverged && (
+                    <p className="flex gap-2 rounded-md bg-secondary p-3 text-xs text-warning">
+                        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                        O nó reporta a válvula {confirmed ? "aberta" : "fechada"}, mas o último comando
+                        foi {commanded ? "abrir" : "fechar"}. O comando pode não ter chegado ao dispositivo.
+                    </p>
+                )}
 
-            {diverged && (
-                <p className="mt-4 rounded-md bg-surface-muted p-3 text-xs text-warning">
-                    O nó reporta a válvula {confirmed ? "aberta" : "fechada"}, mas o último
-                    comando foi {commanded ? "abrir" : "fechar"}. O comando pode não ter
-                    chegado ao dispositivo.
-                </p>
-            )}
-        </section>
+                <ValveControlForm
+                    deviceId={deviceId}
+                    initialControl={initialControl ?? DEFAULT_CONTROL}
+                    hasPhCalibration={hasPhCalibration}
+                />
+            </CardContent>
+        </Card>
     );
 }
 
@@ -128,4 +147,140 @@ function ValveStatusText({
     if (confirmed === null) return <>Sem confirmação do dispositivo</>;
     if (isStale) return <>Sem telemetria recente — estado não confirmado</>;
     return <>Confirmado pelo dispositivo: {confirmed ? "aberta" : "fechada"}</>;
+}
+
+function ValveControlForm({
+    deviceId,
+    initialControl,
+    hasPhCalibration,
+}: {
+    deviceId: string;
+    initialControl: ValveControl;
+    hasPhCalibration: boolean;
+}) {
+    const [mode, setMode] = useState<"manual" | "automatic">(initialControl.mode);
+    const [maxOpenSeconds, setMaxOpenSeconds] = useState(
+        initialControl.mode === "manual" ? initialControl.manual.maxOpenSeconds : 15
+    );
+    const [automatic, setAutomatic] = useState(
+        initialControl.mode === "automatic" ? initialControl.automatic : DEFAULT_AUTOMATIC
+    );
+    const [pending, startTransition] = useTransition();
+
+    const thresholdError =
+        automatic.phCloseThreshold >= automatic.phOpenThreshold
+            ? "O limite inferior tem de ser menor que o limite superior."
+            : null;
+    const burstError =
+        automatic.minBurstSeconds > automatic.maxBurstSeconds
+            ? "A duração mínima não pode exceder a máxima."
+            : null;
+
+    function save() {
+        const payload: ValveControl =
+            mode === "manual" ? { mode, manual: { maxOpenSeconds } } : { mode, automatic };
+
+        startTransition(async () => {
+            const result = await setValveControlAction(deviceId, payload);
+            if (!result.success) {
+                toast.error(result.error);
+                return;
+            }
+            toast.success("Parâmetros de segurança atualizados.");
+        });
+    }
+
+    return (
+        <div className="space-y-4 border-t border-border pt-4">
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "manual" | "automatic")}>
+                <TabsList className="w-full">
+                    <TabsTrigger value="manual" className="flex-1">Manual</TabsTrigger>
+                    <TabsTrigger value="automatic" className="flex-1">Automático</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="manual" className="mt-4 space-y-2">
+                    <Label htmlFor="max-open">Tempo máximo de abertura (s)</Label>
+                    <Input
+                        id="max-open"
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={maxOpenSeconds}
+                        onChange={(e) => setMaxOpenSeconds(Number(e.target.value))}
+                        className="tabular"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        O dispositivo fecha a válvula automaticamente ao fim deste tempo, mesmo sem
+                        novo comando — este limite é aplicado localmente no firmware.
+                    </p>
+                </TabsContent>
+
+                <TabsContent value="automatic" className="mt-4 space-y-4">
+                    {!hasPhCalibration ? (
+                        <p className="flex gap-2 rounded-md bg-secondary p-3 text-xs text-warning">
+                            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                            O modo automático requer uma calibração de pH guardada — o firmware
+                            precisa dela para estimar o pH localmente, sem depender da rede. Calibre
+                            o sensor primeiro.
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                            A válvula abre quando o pH sobe acima do limite superior, injetando CO2 em
+                            rajadas (não continuamente) até o pH descer abaixo do limite inferior.
+                        </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="Limite superior (pH)" value={automatic.phOpenThreshold}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, phOpenThreshold: v }))} step="0.1" />
+                        <Field label="Limite inferior (pH)" value={automatic.phCloseThreshold}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, phCloseThreshold: v }))} step="0.1" />
+                        <Field label="Ganho (s por unidade pH)" value={automatic.burstGainSeconds}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, burstGainSeconds: v }))} step="0.5" />
+                        <Field label="Intervalo entre rajadas (s)" value={automatic.dwellSeconds}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, dwellSeconds: v }))} step="1" />
+                        <Field label="Rajada mínima (s)" value={automatic.minBurstSeconds}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, minBurstSeconds: v }))} step="0.5" />
+                        <Field label="Rajada máxima (s)" value={automatic.maxBurstSeconds}
+                            onChange={(v) => setAutomatic((a) => ({ ...a, maxBurstSeconds: v }))} step="0.5" />
+                    </div>
+                    {(thresholdError || burstError) && (
+                        <p className="text-xs text-danger">{thresholdError ?? burstError}</p>
+                    )}
+                </TabsContent>
+            </Tabs>
+
+            <Button
+                size="sm"
+                onClick={save}
+                disabled={pending || (mode === "automatic" && (!hasPhCalibration || !!(thresholdError || burstError)))}
+            >
+                {pending ? "A guardar…" : "Guardar parâmetros"}
+            </Button>
+        </div>
+    );
+}
+
+function Field({
+    label,
+    value,
+    onChange,
+    step,
+}: {
+    label: string;
+    value: number;
+    onChange: (v: number) => void;
+    step: string;
+}) {
+    return (
+        <div className="space-y-1.5">
+            <Label className="text-xs font-normal text-muted-foreground">{label}</Label>
+            <Input
+                type="number"
+                step={step}
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="tabular"
+            />
+        </div>
+    );
 }

@@ -39,7 +39,7 @@ export function CalibrationPanel({
     return (
         <section className="rounded-lg border border-border bg-surface p-5">
             <div className="flex items-start gap-3">
-                <SlidersHorizontal className="mt-0.5 h-5 w-5 text-accent" aria-hidden />
+                <SlidersHorizontal className="mt-0.5 h-5 w-5 text-brand" aria-hidden />
                 <div className="min-w-0 flex-1">
                     <h2 className="font-medium">Calibração</h2>
                     <p className="mt-0.5 text-xs text-muted-foreground">

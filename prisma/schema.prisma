@@ -1,0 +1,150 @@
+// Slim READ-ONLY mirror of app-gui/prisma/schema.prisma.
+// See prisma/README.md before touching this file. Never run `prisma migrate` here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  SUPER_ADMIN
+  VIEWER
+}
+
+enum DeviceStatus {
+  UNCLAIMED
+  ACTIVE
+  MAINTENANCE
+  PENDING_CONNECTION
+  DISABLED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ExperimentStatus {
+  PLANNED
+  RUNNING
+  COMPLETED
+  PAUSED
+}
+
+enum HardwareType {
+  GATEWAY
+  SENSOR_BASE
+  SENSOR_PREMIUM
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  image        String?
+  auth0UserId  String?  @unique
+  role         Role     @default(VIEWER)
+  jobTitle     String?
+  phone        String?
+  // Department is not modelled here; Postgres still enforces the foreign key.
+  departmentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdProjects Project[]           @relation("ProjectCreator")
+  calibrations    CalibrationRecord[]
+}
+
+/// A Reactor. The UI never says "Project".
+model Project {
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  departmentId String
+  createdById  String
+  status       ProjectStatus @default(ACTIVE)
+  settings     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  createdBy   User         @relation("ProjectCreator", fields: [createdById], references: [id])
+  experiments Experiment[]
+  devices     Device[]
+}
+
+/// One perpetual RUNNING experiment per reactor. Never surfaced in the UI, but
+/// required: the edge worker only flushes telemetry to InfluxDB while one is open.
+model Experiment {
+  id                 String           @id @default(cuid())
+  name               String
+  projectId          String
+  status             ExperimentStatus @default(RUNNING)
+  startDate          DateTime         @default(now())
+  endDate            DateTime?
+  settings           Json?
+  accumulatedSeconds Int              @default(0)
+  lastRunAt          DateTime?
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  devices Device[]
+}
+
+model Device {
+  id           String       @id @default(cuid())
+  name         String?
+  /// Must equal the ESP32's on-wire device_id. See prisma/README.md.
+  serialNumber String       @unique
+  status       DeviceStatus @default(ACTIVE)
+  productId    String
+  departmentId String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  /// Control state for this reactor: { valveOpen, targetPh, phTolerance }.
+  config       Json?        @default("{}")
+  projectId    String?
+
+  calibrationConfig  Json?
+  lastCalibrated     DateTime?
+  calibrationDueDate DateTime?
+
+  product      HardwareProduct     @relation(fields: [productId], references: [id])
+  project      Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  experiments  Experiment[]
+  calibrations CalibrationRecord[]
+}
+
+/// Read-only. Device.productId is NOT NULL with a foreign key, so provisioning
+/// has to resolve a real product row; this app never creates one.
+model HardwareProduct {
+  id   String       @id @default(cuid())
+  sku  String       @unique
+  name String
+  type HardwareType
+
+  devices Device[]
+}
+
+model CalibrationRecord {
+  id            String    @id @default(cuid())
+  deviceId      String
+  userId        String?
+  timestamp     DateTime  @default(now())
+  calibratedAt  DateTime  @default(now())
+  validUntil    DateTime?
+  performedBy   String
+  notes         String?
+  pointsApplied Json?
+  oldConfig     Json?
+  newConfig     Json?
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, calibratedAt(sort: Desc)])
+}

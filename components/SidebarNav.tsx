@@ -1,12 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/components/nav-items";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
+import { SidebarUserMenu } from "@/components/SidebarUserMenu";
 
-export function SidebarNavItems({ onNavigate }: { onNavigate?: () => void }) {
+const COLLAPSE_KEY = "sidebar-collapsed";
+
+export function SidebarNavItems({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed?: boolean }) {
     const pathname = usePathname();
 
     return (
@@ -21,15 +26,17 @@ export function SidebarNavItems({ onNavigate }: { onNavigate?: () => void }) {
                         key={item.href}
                         href={item.href}
                         onClick={onNavigate}
+                        title={collapsed ? item.label : undefined}
                         className={cn(
                             "flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors",
+                            collapsed && "justify-center px-2",
                             active
                                 ? "border-sidebar-primary bg-sidebar-accent font-medium text-sidebar-foreground"
                                 : "border-transparent text-sidebar-foreground/60 hover:border-sidebar-border hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                         )}
                     >
-                        <Icon className="size-4" aria-hidden />
-                        {item.label}
+                        <Icon className="size-4 shrink-0" aria-hidden />
+                        {!collapsed && item.label}
                     </Link>
                 );
             })}
@@ -37,31 +44,87 @@ export function SidebarNavItems({ onNavigate }: { onNavigate?: () => void }) {
     );
 }
 
-export function SidebarBrand() {
+export function SidebarBrand({ collapsed }: { collapsed?: boolean }) {
     return (
-        <Link href="/dashboard" className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
+        <Link
+            href="/dashboard"
+            className={cn(
+                "flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4",
+                collapsed && "justify-center px-0"
+            )}
+        >
             <span
                 className="flex size-7 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground"
                 aria-hidden
             >
                 μA
             </span>
-            <span className="flex flex-col leading-tight">
-                <span className="font-heading font-semibold text-sidebar-foreground">Microalgas</span>
-                <span className="gauge-label text-sidebar-foreground/50">Consola de cultivo</span>
-            </span>
+            {!collapsed && (
+                <span className="flex flex-col leading-tight">
+                    <span className="font-heading font-semibold text-sidebar-foreground">Microalgas</span>
+                    <span className="gauge-label text-sidebar-foreground/50">Consola de cultivo</span>
+                </span>
+            )}
         </Link>
     );
 }
 
+interface SidebarUser {
+    name: string | null;
+    email: string;
+}
+
 /** Desktop-only fixed sidebar, styled as a dark instrument-panel bezel regardless of theme. */
-export function DesktopSidebar() {
+export function DesktopSidebar({ user }: { user: SidebarUser }) {
+    const [collapsed, setCollapsed] = useState(false);
+    const [hydrated, setHydrated] = useState(false);
+
+    useEffect(() => {
+        // Reads localStorage post-mount to avoid an SSR/client markup mismatch -
+        // the same tradeoff next-themes (already a dependency here) makes internally.
+        try {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+        } catch {
+            // Private browsing / storage blocked - default to expanded.
+        }
+        setHydrated(true);
+    }, []);
+
+    function toggle() {
+        setCollapsed((cur) => {
+            const next = !cur;
+            try {
+                localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+            } catch {
+                // Nothing to persist to - the toggle still works for this session.
+            }
+            return next;
+        });
+    }
+
     return (
-        <aside className="hidden w-60 shrink-0 flex-col bg-sidebar lg:flex">
-            <SidebarBrand />
-            <SidebarNavItems />
-            <div className="border-t border-sidebar-border p-3">
-                <ConnectionBadge />
+        <aside
+            className={cn(
+                "hidden shrink-0 flex-col bg-sidebar lg:flex",
+                hydrated ? "transition-[width] duration-200" : undefined,
+                collapsed ? "w-16" : "w-60"
+            )}
+        >
+            <div className="relative">
+                <SidebarBrand collapsed={collapsed} />
+                <button
+                    onClick={toggle}
+                    aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+                    className="absolute top-1/2 -right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground/60 hover:text-sidebar-foreground"
+                >
+                    {collapsed ? <PanelLeftOpen className="size-3.5" aria-hidden /> : <PanelLeftClose className="size-3.5" aria-hidden />}
+                </button>
+            </div>
+            <SidebarNavItems collapsed={collapsed} />
+            <div className="space-y-2 border-t border-sidebar-border p-3">
+                {!collapsed && <ConnectionBadge />}
+                <SidebarUserMenu user={user} collapsed={collapsed} />
             </div>
         </aside>
     );

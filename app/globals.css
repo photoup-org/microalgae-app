@@ -188,21 +188,6 @@ body {
   text-transform: uppercase;
 }
 
-/*
- * Chart-recorder paper: faint ruled horizontal lines referencing the strip
- * charts historically used to log bioreactor readings. Static, so it costs
- * nothing under prefers-reduced-motion.
- */
-.recorder-paper {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    color-mix(in oklch, var(--border), transparent 55%) 0,
-    color-mix(in oklch, var(--border), transparent 55%) 1px,
-    transparent 1px,
-    transparent 22px
-  );
-}
-
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }

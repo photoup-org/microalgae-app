@@ -15,11 +15,11 @@
 ## What is mirrored, and what was left out
 
 Mirrored: `User`, `Project`, `Experiment`, `Device`, `HardwareProduct`,
-`CalibrationRecord`.
+`CalibrationRecord`, `SystemLog` (read-only - see the note on the model).
 
 Deliberately omitted: every commercial model (`Organization`, `Department`,
-`PlanTier`, `Order`, `OrderItem`, `Address`, `ProjectMember`) plus `Alert`,
-`SystemLog` and `SensorReading`.
+`PlanTier`, `Order`, `OrderItem`, `Address`, `ProjectMember`) plus `Alert`
+and `SensorReading`.
 
 Two consequences worth knowing:
 

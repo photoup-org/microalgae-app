@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({ searchParams }: PageProps<"/projects">) {
+    const { new: openNew } = await searchParams;
     const [projects, assignableDevices] = await Promise.all([
         prisma.project.findMany({
             where: { departmentId: process.env.DEPARTMENT_ID, status: ProjectStatus.ACTIVE },
@@ -30,7 +31,7 @@ export default async function ProjectsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <ResyncButton />
-                    <ProjectFormDialog assignableDevices={assignableDevices} />
+                    <ProjectFormDialog assignableDevices={assignableDevices} defaultOpen={openNew === "1"} />
                 </div>
             </div>
 

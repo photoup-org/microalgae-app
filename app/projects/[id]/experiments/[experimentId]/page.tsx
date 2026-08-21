@@ -83,6 +83,7 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                     initialOpen={config.valveOpen === true}
                                     initialControl={(config.control as never) ?? null}
                                     hasPhCalibration={Boolean((device.calibrationConfig as { ph?: unknown } | null)?.ph)}
+                                    hasRunningExperiment={experiment.status === "RUNNING"}
                                 />
                                 <CalibrationPanel
                                     deviceId={device.id}

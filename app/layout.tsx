@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { ThemeProvider } from "next-themes";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -22,10 +23,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
     return (
-        <html lang="pt" className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}>
+        <html lang="pt" className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`} suppressHydrationWarning>
             <body className="min-h-full flex flex-col">
-                <TooltipProvider>{children}</TooltipProvider>
-                <Toaster richColors position="bottom-right" />
+                <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem>
+                    <TooltipProvider>{children}</TooltipProvider>
+                    <Toaster richColors position="bottom-right" />
+                </ThemeProvider>
             </body>
         </html>
     );

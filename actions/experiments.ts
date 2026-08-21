@@ -20,7 +20,7 @@ import type { ActionResult } from "@/lib/action-result";
  * segments, the calibration/config key, and the InfluxDB device_id tag. Mapping
  * to the wire id keeps all of those addressable by one identity.
  */
-async function publishExperimentStart(experimentId: string, serialNumbers: string[]) {
+async function publishExperimentStart(experimentId: string, serialNumbers: string[], deviceLimits?: Record<string, Record<string, number>>) {
     const deviceMap = Object.fromEntries(serialNumbers.map((sn) => [sn, sn]));
     await publishMQTTMessage(`cmd/experiments/${experimentId}/start`, {
         storageFrequency: 60,
@@ -29,15 +29,22 @@ async function publishExperimentStart(experimentId: string, serialNumbers: strin
         departmentId: process.env.DEPARTMENT_ID,
         deviceMap,
         deviceSns: deviceMap,
-        settings: { liveInterval: 5, dbInterval: 60 },
+        // `devices` here is what the edge worker's threshold-breach check reads
+        // (device_buffer.py: `{metric}Min`/`{metric}Max` per serialNumber) - without
+        // it the check silently no-ops, since an empty dict has no keys to breach.
+        settings: { liveInterval: 5, dbInterval: 60, devices: deviceLimits ?? {} },
     });
 }
+
+const limitSchema = z.object({ min: z.number().optional(), max: z.number().optional() });
 
 const createExperimentSchema = z.object({
     name: z.string().trim().min(1, "O nome é obrigatório.").max(80),
     startDate: z.coerce.date(),
     endDate: z.coerce.date().optional().nullable(),
     deviceIds: z.array(z.string()).min(1, "Selecione pelo menos um dispositivo."),
+    /** Keyed by deviceId, then by REACTOR_SCHEMA metric key (ph/temp/turbidity/co2). */
+    limits: z.record(z.string(), z.record(z.string(), limitSchema)).optional(),
 });
 
 export async function createExperimentAction(projectId: string, input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -51,7 +58,7 @@ export async function createExperimentAction(projectId: string, input: unknown):
     if (!parsed.success) {
         return { success: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
     }
-    const { name, startDate, endDate, deviceIds } = parsed.data;
+    const { name, startDate, endDate, deviceIds, limits } = parsed.data;
 
     const project = await prisma.project.findFirst({
         where: { id: projectId, departmentId: process.env.DEPARTMENT_ID },
@@ -76,6 +83,20 @@ export async function createExperimentAction(projectId: string, input: unknown):
         return { success: false, error: `Dispositivos já alocados a outra experiência: ${allocated.map((d) => d.name).join(", ")}.` };
     }
 
+    // Flatten {deviceId: {metric: {min,max}}} into the {serialNumber: {metricMin,
+    // metricMax}} shape the edge worker's threshold check reads. See publishExperimentStart.
+    const settingsDevices: Record<string, Record<string, number>> = {};
+    for (const device of devices) {
+        const deviceLimits = limits?.[device.id];
+        if (!deviceLimits) continue;
+        const flat: Record<string, number> = {};
+        for (const [metric, { min, max }] of Object.entries(deviceLimits)) {
+            if (min !== undefined) flat[`${metric}Min`] = min;
+            if (max !== undefined) flat[`${metric}Max`] = max;
+        }
+        if (Object.keys(flat).length > 0) settingsDevices[device.serialNumber] = flat;
+    }
+
     const experiment = await prisma.experiment.create({
         data: {
             projectId,
@@ -84,6 +105,7 @@ export async function createExperimentAction(projectId: string, input: unknown):
             endDate: endDate ?? undefined,
             status: ExperimentStatus.PLANNED,
             devices: { connect: deviceIds.map((id) => ({ id })) },
+            settings: Object.keys(settingsDevices).length > 0 ? { devices: settingsDevices } : undefined,
         },
     });
 
@@ -152,7 +174,8 @@ export async function updateExperimentLifecycleAction(
 
     try {
         if (newStatus === ExperimentStatus.RUNNING) {
-            await publishExperimentStart(experimentId, experiment.devices.map((d) => d.serialNumber));
+            const settings = (experiment.settings ?? {}) as { devices?: Record<string, Record<string, number>> };
+            await publishExperimentStart(experimentId, experiment.devices.map((d) => d.serialNumber), settings.devices);
         } else if (newStatus === ExperimentStatus.PAUSED || newStatus === ExperimentStatus.COMPLETED) {
             await publishMQTTMessage(`cmd/experiments/${experimentId}/flush`, {});
         }
@@ -213,7 +236,8 @@ export async function resyncExperimentsAction(): Promise<ActionResult<{ synced: 
     let synced = 0;
     for (const experiment of experiments) {
         try {
-            await publishExperimentStart(experiment.id, experiment.devices.map((d) => d.serialNumber));
+            const settings = (experiment.settings ?? {}) as { devices?: Record<string, Record<string, number>> };
+            await publishExperimentStart(experiment.id, experiment.devices.map((d) => d.serialNumber), settings.devices);
             synced++;
         } catch (error) {
             console.error(`[resync] Failed for experiment ${experiment.id}:`, error);

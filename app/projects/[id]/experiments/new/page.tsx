@@ -26,6 +26,7 @@ export default async function NewExperimentPage({ params }: PageProps<"/projects
         serialNumber: d.serialNumber,
         status: d.status,
         isAllocated: d.experiments.length > 0,
+        sensors: ((d.config as { sensors?: string[] } | null)?.sensors) ?? [],
     }));
 
     return (

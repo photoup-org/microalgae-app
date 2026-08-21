@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { ExperimentStatus } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
 import { requireUser } from "@/lib/core/auth/user";
@@ -12,6 +13,20 @@ import type { ActionResult } from "@/lib/action-result";
 /** Scopes every device lookup to this deployment's single department. */
 function deviceWhere(id: string) {
     return { id, departmentId: process.env.DEPARTMENT_ID };
+}
+
+/**
+ * Gates valve ACTIVATION (opening, or arming automatic dosing) on a RUNNING
+ * experiment. The live MQTT telemetry fan-out works with no experiment at all
+ * (see CLAUDE.md), so without this check the valve could fire off nothing but
+ * passive monitoring. Closing the valve is never gated - see the call sites.
+ */
+async function hasRunningExperiment(deviceId: string): Promise<boolean> {
+    const experiment = await prisma.experiment.findFirst({
+        where: { status: ExperimentStatus.RUNNING, devices: { some: { id: deviceId } } },
+        select: { id: true },
+    });
+    return experiment !== null;
 }
 
 const updateDeviceSchema = z.object({
@@ -93,6 +108,10 @@ export async function setValveAction(deviceId: string, open: boolean): Promise<A
 
     const device = await prisma.device.findFirst({ where: deviceWhere(deviceId) });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
+
+    if (open && !(await hasRunningExperiment(device.id))) {
+        return { success: false, error: "A válvula só pode ser aberta com uma experiência em curso." };
+    }
 
     try {
         await publishMQTTMessage(`cmd/devices/${device.serialNumber}/config`, { valve: open });
@@ -176,6 +195,9 @@ export async function setValveControlAction(deviceId: string, input: unknown): P
     // publish a control config the device cannot safely evaluate.
     let payload: typeof parsed.data | (typeof parsed.data & { calibration: { m: number; b: number } });
     if (parsed.data.mode === "automatic") {
+        if (!(await hasRunningExperiment(device.id))) {
+            return { success: false, error: "O modo automático só pode ser ativado com uma experiência em curso." };
+        }
         const calibrationConfig = (device.calibrationConfig ?? {}) as Record<string, unknown>;
         const approx = deriveLinearPhApprox(calibrationConfig.ph);
         if (!approx) {

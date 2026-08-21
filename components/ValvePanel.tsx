@@ -25,9 +25,9 @@ type AutomaticControl = {
         dwellSeconds: number;
     };
 };
-type ValveControl = ManualControl | AutomaticControl;
+export type ValveControl = ManualControl | AutomaticControl;
 
-const DEFAULT_CONTROL: ValveControl = { mode: "manual", manual: { maxOpenSeconds: 15 } };
+export const DEFAULT_CONTROL: ValveControl = { mode: "manual", manual: { maxOpenSeconds: 15 } };
 const DEFAULT_AUTOMATIC: AutomaticControl["automatic"] = {
     phOpenThreshold: 7.5,
     phCloseThreshold: 7.0,
@@ -45,6 +45,8 @@ interface ValvePanelProps {
     initialControl: ValveControl | null;
     /** Automatic mode is refused server-side without one - see setValveControlAction. */
     hasPhCalibration: boolean;
+    /** Opening the valve (manual or automatic) is refused server-side without one - see setValveAction/setValveControlAction. */
+    hasRunningExperiment: boolean;
 }
 
 /** How long telemetry may be silent before the reported state is treated as stale. */
@@ -59,7 +61,7 @@ const STALE_AFTER_MS = 30_000;
  * ESP32 firmware against its own local pH reading, not by anything running here.
  * If the network drops while the valve is open, the firmware still closes it.
  */
-export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl, hasPhCalibration }: ValvePanelProps) {
+export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl, hasPhCalibration, hasRunningExperiment }: ValvePanelProps) {
     const [commanded, setCommanded] = useState(initialOpen);
     const [pending, startTransition] = useTransition();
     const [lastSeen, setLastSeen] = useState<number | null>(null);
@@ -81,6 +83,10 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
     }, [lastSeen]);
 
     function toggle(next: boolean) {
+        if (next && !hasRunningExperiment) {
+            toast.error("A válvula só pode ser aberta com uma experiência em curso.");
+            return;
+        }
         setCommanded(next);
         startTransition(async () => {
             const result = await setValveAction(deviceId, next);
@@ -125,10 +131,19 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
                     </p>
                 )}
 
+                {!hasRunningExperiment && (
+                    <p className="flex gap-2 rounded-md bg-secondary p-3 text-xs text-warning">
+                        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                        Sem experiência em curso — a válvula não pode ser aberta enquanto só a
+                        telemetria estiver ativa.
+                    </p>
+                )}
+
                 <ValveControlForm
                     deviceId={deviceId}
                     initialControl={initialControl ?? DEFAULT_CONTROL}
                     hasPhCalibration={hasPhCalibration}
+                    hasRunningExperiment={hasRunningExperiment}
                 />
             </CardContent>
         </Card>
@@ -165,14 +180,16 @@ function ValveStatusText({
     return <>Confirmado pelo dispositivo: {confirmed ? "aberta" : "fechada"}</>;
 }
 
-function ValveControlForm({
+export function ValveControlForm({
     deviceId,
     initialControl,
     hasPhCalibration,
+    hasRunningExperiment,
 }: {
     deviceId: string;
     initialControl: ValveControl;
     hasPhCalibration: boolean;
+    hasRunningExperiment: boolean;
 }) {
     const [mode, setMode] = useState<"manual" | "automatic">(initialControl.mode);
     const [maxOpenSeconds, setMaxOpenSeconds] = useState(
@@ -232,6 +249,14 @@ function ValveControlForm({
                 </TabsContent>
 
                 <TabsContent value="automatic" className="mt-4 space-y-4">
+                    {!hasRunningExperiment && (
+                        <p className="flex gap-2 rounded-md bg-secondary p-3 text-xs text-warning">
+                            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                            O modo automático só pode ser ativado com uma experiência em curso —
+                            o dosing loop abriria a válvula com base apenas na telemetria, sem uma
+                            experiência a registar o que acontece.
+                        </p>
+                    )}
                     {!hasPhCalibration ? (
                         <p className="flex gap-2 rounded-md bg-secondary p-3 text-xs text-warning">
                             <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -268,7 +293,7 @@ function ValveControlForm({
             <Button
                 size="sm"
                 onClick={save}
-                disabled={pending || (mode === "automatic" && (!hasPhCalibration || !!(thresholdError || burstError)))}
+                disabled={pending || (mode === "automatic" && (!hasPhCalibration || !hasRunningExperiment || !!(thresholdError || burstError)))}
             >
                 {pending ? "A guardar…" : "Guardar parâmetros"}
             </Button>

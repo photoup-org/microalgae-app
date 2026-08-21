@@ -130,6 +130,43 @@ model HardwareProduct {
   devices Device[]
 }
 
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}
+
+enum LogCategory {
+  EXPERIMENT
+  ALERT
+  HARDWARE
+  SYSTEM
+}
+
+/// Read-only here - this app never creates rows. The edge worker writes threshold
+/// breaches (device_buffer.py) and app-gui writes experiment lifecycle events,
+/// both via app-gui's /api/system-logs webhook, straight into this shared table.
+/// Plain scalar links (no relation()), matching this file's convention for
+/// loosely-coupled ids - see prisma/README.md.
+model SystemLog {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+
+  level    LogLevel
+  category LogCategory
+  action   String
+  message  String
+  metadata Json?
+
+  departmentId String
+  projectId    String?
+  experimentId String?
+  deviceId     String?
+
+  @@index([departmentId, timestamp(sort: Desc)])
+}
+
 model CalibrationRecord {
   id            String    @id @default(cuid())
   deviceId      String

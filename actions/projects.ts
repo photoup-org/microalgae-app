@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/core/prisma";
 import { requireUser } from "@/lib/core/auth/user";
@@ -37,6 +36,7 @@ export async function getAssignableDevicesAction(editingProjectId?: string) {
             departmentId: process.env.DEPARTMENT_ID,
             OR: [{ projectId: null }, ...(editingProjectId ? [{ projectId: editingProjectId }] : [])],
         },
+        include: { experiments: { where: { status: "RUNNING" }, select: { id: true } } },
         orderBy: { name: "asc" },
     });
 }
@@ -130,5 +130,6 @@ export async function deleteProjectAction(projectId: string): Promise<ActionResu
 
     await prisma.project.delete({ where: { id: projectId } });
     revalidatePath("/projects");
-    redirect("/projects");
+    revalidatePath("/dashboard");
+    return { success: true };
 }

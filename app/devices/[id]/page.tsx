@@ -21,7 +21,7 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
 
     const device = await prisma.device.findFirst({
         where: { id, departmentId: process.env.DEPARTMENT_ID },
-        include: { project: true },
+        include: { project: true, experiments: { where: { status: "RUNNING" }, select: { id: true } } },
     });
     if (!device) notFound();
 
@@ -93,6 +93,7 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                         initialOpen={config.valveOpen === true}
                         initialControl={(config.control as never) ?? null}
                         hasPhCalibration={Boolean((device.calibrationConfig as { ph?: unknown } | null)?.ph)}
+                        hasRunningExperiment={device.experiments.length > 0}
                     />
                     <CalibrationPanel
                         deviceId={device.id}

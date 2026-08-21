@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarBrand, SidebarNavItems } from "@/components/SidebarNav";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
+import { SidebarUserMenu } from "@/components/SidebarUserMenu";
 
-export function MobileNav() {
+export function MobileNav({ user }: { user: { name: string | null; email: string } }) {
     const [open, setOpen] = useState(false);
 
     return (
@@ -23,8 +24,9 @@ export function MobileNav() {
                 </SheetHeader>
                 <SidebarBrand />
                 <SidebarNavItems onNavigate={() => setOpen(false)} />
-                <div className="border-t border-sidebar-border p-3">
+                <div className="space-y-2 border-t border-sidebar-border p-3">
                     <ConnectionBadge />
+                    <SidebarUserMenu user={user} />
                 </div>
             </SheetContent>
         </Sheet>

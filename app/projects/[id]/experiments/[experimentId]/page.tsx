@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { ExperimentStatusBadge } from "@/components/ExperimentStatusBadge";
 import { ExperimentControls } from "@/components/ExperimentControls";
 import { ExportDataButton } from "@/components/ExportDataButton";
+import { ReactorGauges } from "@/components/ReactorGauges";
 import { ReactorChart } from "@/components/ReactorChart";
 import { ValvePanel } from "@/components/ValvePanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
@@ -70,6 +71,8 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                 <Link href={`/devices/${device.id}`} className="hover:underline">{device.name}</Link>
                                 <span className="tabular ml-2 text-xs font-normal text-muted-foreground">{device.serialNumber}</span>
                             </h2>
+
+                            <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
 
                             <ReactorChart serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
 

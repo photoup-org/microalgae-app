@@ -6,6 +6,7 @@ import { getDeviceTelemetry } from "@/lib/db/influx";
 import { AppShell } from "@/components/AppShell";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
 import { DeviceEditDialog } from "@/components/DeviceEditDialog";
+import { ReactorGauges } from "@/components/ReactorGauges";
 import { ReactorChart } from "@/components/ReactorChart";
 import { ValvePanel } from "@/components/ValvePanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
@@ -80,6 +81,8 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                         Não foi possível ler o histórico. A apresentar apenas valores em tempo real.
                     </p>
                 )}
+
+                <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
 
                 <ReactorChart serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
 

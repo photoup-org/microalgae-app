@@ -8,9 +8,9 @@ export function DeviceOnlineSummary({ devices }: { devices: { serialNumber: stri
     const online = devices.filter((d) => status[d.serialNumber] === "online").length;
 
     return (
-        <p className="text-2xl font-semibold">
+        <>
             {online}
-            <span className="text-base font-normal text-muted-foreground"> / {devices.length}</span>
-        </p>
+            <span className="text-lg font-normal text-muted-foreground"> / {devices.length}</span>
+        </>
     );
 }

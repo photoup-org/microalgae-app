@@ -26,10 +26,10 @@ export interface SchemaItem {
 }
 
 export const REACTOR_SCHEMA: SchemaItem[] = [
-    { key: "ph", label: "pH", unit: "", min: 0, max: 14, color: "#3b82f6", requires: ["temp"] },
-    { key: "temp", label: "Temperatura", unit: "°C", min: 0, max: 50, color: "#ef4444", requires: [] },
-    { key: "turbidity", label: "Turbidez", unit: "NTU", min: 0, max: 100, color: "#22c55e", requires: [] },
-    { key: "co2", label: "CO2", unit: "ppm", min: 0, max: 2000, color: "#a855f7", requires: ["temp"] },
+    { key: "ph", label: "pH", unit: "", min: 0, max: 14, color: "var(--metric-ph)", requires: ["temp"] },
+    { key: "temp", label: "Temperatura", unit: "°C", min: 0, max: 50, color: "var(--metric-temp)", requires: [] },
+    { key: "turbidity", label: "Turbidez", unit: "NTU", min: 0, max: 100, color: "var(--metric-turbidity)", requires: [] },
+    { key: "co2", label: "CO2", unit: "ppm", min: 0, max: 2000, color: "var(--metric-co2)", requires: ["temp"] },
 ];
 
 /** Not a sensor channel: actuator state reported back in telemetry. */

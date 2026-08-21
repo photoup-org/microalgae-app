@@ -105,8 +105,9 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
             </CardHeader>
             <CardContent className="space-y-5">
                 <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs text-muted-foreground">
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
                         <ValveStatusText confirmed={confirmed} isStale={isStale} pending={pending} />
+                        {confirmed && !isStale && <ValveBubbles />}
                     </p>
                     <Switch
                         checked={commanded}
@@ -131,6 +132,21 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
                 />
             </CardContent>
         </Card>
+    );
+}
+
+/** Three bubbles rising at staggered offsets, echoing CO2 injecting into the culture. */
+function ValveBubbles() {
+    return (
+        <span className="flex items-end gap-0.5" aria-hidden>
+            {[0, 0.2, 0.4].map((delay) => (
+                <span
+                    key={delay}
+                    className="valve-bubble size-1 rounded-full bg-metric-co2"
+                    style={{ animationDelay: `${delay}s` }}
+                />
+            ))}
+        </span>
     );
 }
 

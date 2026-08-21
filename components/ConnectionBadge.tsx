@@ -7,7 +7,7 @@ export function ConnectionBadge() {
     const isConnected = useMqttStore((s) => s.isConnected);
 
     return (
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="gauge-label flex items-center gap-2 text-sidebar-foreground/60">
             <span
                 className={`h-2 w-2 rounded-full ${isConnected ? "bg-success live-dot" : "bg-danger"}`}
                 aria-hidden

@@ -10,7 +10,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <MqttConnectionManager />
             <DesktopSidebar />
             <div className="flex flex-1 flex-col">
-                <header className="flex h-14 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
+                <header className="recorder-paper flex h-14 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
                     <MobileNav />
                     <div className="flex-1" />
                     <Button variant="ghost" size="sm" asChild>

@@ -15,7 +15,8 @@
 ## What is mirrored, and what was left out
 
 Mirrored: `User`, `Project`, `Experiment`, `Device`, `HardwareProduct`,
-`CalibrationRecord`, `SystemLog` (read-only - see the note on the model).
+`CalibrationRecord`, `SystemLog` (written here too now, via `app/api/system-logs` -
+see the note on the model).
 
 Deliberately omitted: every commercial model (`Organization`, `Department`,
 `PlanTier`, `Order`, `OrderItem`, `Address`, `ProjectMember`) plus `Alert`

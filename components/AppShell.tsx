@@ -26,11 +26,11 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
     const sidebarUser = { name: user?.name ?? null, email: user?.email ?? "" };
 
     return (
-        <div className="flex min-h-screen">
+        <div className="flex h-screen overflow-hidden">
             <MqttConnectionManager />
             <DesktopSidebar user={sidebarUser} />
-            <div className="flex flex-1 flex-col">
-                <header className="flex h-14 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
+            <div className="flex min-h-0 flex-1 flex-col">
+                <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
                     <MobileNav user={sidebarUser} />
                     {title && (
                         <div className="min-w-0">
@@ -45,7 +45,7 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
                         </Link>
                     </Button>
                     <Button variant="ghost" size="icon" asChild className="relative" aria-label="Alertas">
-                        <Link href="/dashboard#alertas">
+                        <Link href="/incidents">
                             <Bell className="size-4" aria-hidden />
                             {alertCount > 0 && (
                                 <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger" aria-hidden />
@@ -53,7 +53,7 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
                         </Link>
                     </Button>
                 </header>
-                <main className="flex-1 p-4 lg:p-6">{children}</main>
+                <main className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
             </div>
         </div>
     );

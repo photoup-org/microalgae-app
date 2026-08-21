@@ -185,11 +185,20 @@ export function ValveControlForm({
     initialControl,
     hasPhCalibration,
     hasRunningExperiment,
+    onChange,
 }: {
     deviceId: string;
     initialControl: ValveControl;
     hasPhCalibration: boolean;
     hasRunningExperiment: boolean;
+    /**
+     * When set, this form becomes embedded/controlled: it reports every change
+     * instead of saving itself, and hides its own save button - the caller (e.g.
+     * a project wizard whose own "finish" button should be the single point of
+     * persistence) is responsible for calling setValveControlAction. Omit for the
+     * standalone usage (device/experiment page), which keeps saving itself.
+     */
+    onChange?: (control: ValveControl) => void;
 }) {
     const [mode, setMode] = useState<"manual" | "automatic">(initialControl.mode);
     const [maxOpenSeconds, setMaxOpenSeconds] = useState(
@@ -209,12 +218,24 @@ export function ValveControlForm({
             ? "A duração mínima não pode exceder a máxima."
             : null;
 
-    function save() {
-        const payload: ValveControl =
-            mode === "manual" ? { mode, manual: { maxOpenSeconds } } : { mode, automatic };
+    const current: ValveControl = mode === "manual" ? { mode, manual: { maxOpenSeconds } } : { mode, automatic };
 
+    function updateMode(next: "manual" | "automatic") {
+        setMode(next);
+        onChange?.(next === "manual" ? { mode: next, manual: { maxOpenSeconds } } : { mode: next, automatic });
+    }
+    function updateMaxOpenSeconds(next: number) {
+        setMaxOpenSeconds(next);
+        onChange?.({ mode: "manual", manual: { maxOpenSeconds: next } });
+    }
+    function updateAutomatic(next: AutomaticControl["automatic"]) {
+        setAutomatic(next);
+        onChange?.({ mode: "automatic", automatic: next });
+    }
+
+    function save() {
         startTransition(async () => {
-            const result = await setValveControlAction(deviceId, payload);
+            const result = await setValveControlAction(deviceId, current);
             if (!result.success) {
                 toast.error(result.error);
                 return;
@@ -225,7 +246,7 @@ export function ValveControlForm({
 
     return (
         <div className="space-y-4 border-t border-border pt-4">
-            <Tabs value={mode} onValueChange={(v) => setMode(v as "manual" | "automatic")}>
+            <Tabs value={mode} onValueChange={(v) => updateMode(v as "manual" | "automatic")}>
                 <TabsList className="w-full">
                     <TabsTrigger value="manual" className="flex-1">Manual</TabsTrigger>
                     <TabsTrigger value="automatic" className="flex-1">Automático</TabsTrigger>
@@ -239,7 +260,7 @@ export function ValveControlForm({
                         min={1}
                         max={120}
                         value={maxOpenSeconds}
-                        onChange={(e) => setMaxOpenSeconds(Number(e.target.value))}
+                        onChange={(e) => updateMaxOpenSeconds(Number(e.target.value))}
                         className="tabular"
                     />
                     <p className="text-xs text-muted-foreground">
@@ -272,17 +293,17 @@ export function ValveControlForm({
                     )}
                     <div className="grid grid-cols-2 gap-3">
                         <Field label="Limite superior (pH)" value={automatic.phOpenThreshold}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, phOpenThreshold: v }))} step="0.1" />
+                            onChange={(v) => updateAutomatic({ ...automatic, phOpenThreshold: v })} step="0.1" />
                         <Field label="Limite inferior (pH)" value={automatic.phCloseThreshold}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, phCloseThreshold: v }))} step="0.1" />
+                            onChange={(v) => updateAutomatic({ ...automatic, phCloseThreshold: v })} step="0.1" />
                         <Field label="Ganho (s por unidade pH)" value={automatic.burstGainSeconds}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, burstGainSeconds: v }))} step="0.5" />
+                            onChange={(v) => updateAutomatic({ ...automatic, burstGainSeconds: v })} step="0.5" />
                         <Field label="Intervalo entre rajadas (s)" value={automatic.dwellSeconds}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, dwellSeconds: v }))} step="1" />
+                            onChange={(v) => updateAutomatic({ ...automatic, dwellSeconds: v })} step="1" />
                         <Field label="Rajada mínima (s)" value={automatic.minBurstSeconds}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, minBurstSeconds: v }))} step="0.5" />
+                            onChange={(v) => updateAutomatic({ ...automatic, minBurstSeconds: v })} step="0.5" />
                         <Field label="Rajada máxima (s)" value={automatic.maxBurstSeconds}
-                            onChange={(v) => setAutomatic((a) => ({ ...a, maxBurstSeconds: v }))} step="0.5" />
+                            onChange={(v) => updateAutomatic({ ...automatic, maxBurstSeconds: v })} step="0.5" />
                     </div>
                     {(thresholdError || burstError) && (
                         <p className="text-xs text-danger">{thresholdError ?? burstError}</p>
@@ -290,13 +311,15 @@ export function ValveControlForm({
                 </TabsContent>
             </Tabs>
 
-            <Button
-                size="sm"
-                onClick={save}
-                disabled={pending || (mode === "automatic" && (!hasPhCalibration || !hasRunningExperiment || !!(thresholdError || burstError)))}
-            >
-                {pending ? "A guardar…" : "Guardar parâmetros"}
-            </Button>
+            {!onChange && (
+                <Button
+                    size="sm"
+                    onClick={save}
+                    disabled={pending || (mode === "automatic" && (!hasPhCalibration || !hasRunningExperiment || !!(thresholdError || burstError)))}
+                >
+                    {pending ? "A guardar…" : "Guardar parâmetros"}
+                </Button>
+            )}
         </div>
     );
 }

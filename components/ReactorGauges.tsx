@@ -13,14 +13,23 @@ interface ReactorGaugesProps {
     telemetry: SensorReading[];
     /** Channels this reactor was provisioned with. Empty means all. */
     enabledMetrics: string[];
+    /**
+     * Whether to merge the live MQTT stream on top of `telemetry`. Defaults to true
+     * for the standalone device page. The experiment page passes
+     * `experiment.status === "RUNNING"` - live telemetry flows independent of any
+     * experiment (see CLAUDE.md), so without this an experiment view keeps updating
+     * after it's stopped, or shows readings before it's ever started.
+     */
+    live?: boolean;
 }
 
 /** Current-value readout row, fed by the live MQTT stream with a fallback to the last saved point. */
-export function ReactorGauges({ serialNumber, telemetry, enabledMetrics }: ReactorGaugesProps) {
+export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: liveEnabled = true }: ReactorGaugesProps) {
     const metrics = REACTOR_SCHEMA.filter(
         (m) => enabledMetrics.length === 0 || enabledMetrics.includes(m.key)
     );
-    const live = useMqttStore((s) => s.liveValues[serialNumber]);
+    const liveValues = useMqttStore((s) => s.liveValues[serialNumber]);
+    const live = liveEnabled ? liveValues : undefined;
 
     const lastSaved = useMemo(() => {
         const latest: Record<string, number> = {};

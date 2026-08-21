@@ -19,11 +19,11 @@ export function CalibrationOverviewWidget({ devices }: { devices: CalibrationEnt
     const now = new Date();
 
     return (
-        <Card>
+        <Card className="h-full">
             <CardHeader>
                 <CardTitle className="text-base">Calibração</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto">
                 {devices.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum dispositivo registado.</p>
                 ) : (

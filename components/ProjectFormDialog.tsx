@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Pencil, ListTodo, Cpu, Settings, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { createProjectAction, updateProjectAction } from "@/actions/projects";
+import { setValveControlAction } from "@/actions/devices";
 import { ValveControlForm, DEFAULT_CONTROL, type ValveControl } from "@/components/ValvePanel";
 import { deriveLinearPhApprox } from "@/lib/calibration-approx";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 
-interface AssignableDevice {
+export interface AssignableDevice {
     id: string;
     name: string | null;
     serialNumber: string;
@@ -39,6 +40,13 @@ interface ProjectFormDialogProps {
     project?: { id: string; name: string; description: string | null; deviceIds: string[] };
     /** Opens the wizard immediately - used by the topbar's quick-create link (?new=1). */
     defaultOpen?: boolean;
+    /**
+     * Fully external open control - pass both to drive the dialog from elsewhere
+     * (e.g. a dropdown menu item) instead of the dialog's own trigger button. When
+     * set, no <DialogTrigger> is rendered; the caller owns the only way to open it.
+     */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 const STEPS = [
@@ -48,22 +56,32 @@ const STEPS = [
     { label: "Revisão", icon: Check },
 ];
 
-export function ProjectFormDialog({ assignableDevices, project, defaultOpen }: ProjectFormDialogProps) {
-    const [open, setOpen] = useState(defaultOpen ?? false);
+export function ProjectFormDialog({ assignableDevices, project, defaultOpen, open: controlledOpen, onOpenChange: setControlledOpen }: ProjectFormDialogProps) {
+    const isControlled = controlledOpen !== undefined;
+    const [internalOpen, setInternalOpen] = useState(defaultOpen ?? false);
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = isControlled ? (setControlledOpen ?? (() => {})) : setInternalOpen;
     const [step, setStep] = useState(0);
     const [name, setName] = useState(project?.name ?? "");
     const [description, setDescription] = useState(project?.description ?? "");
     const [deviceIds, setDeviceIds] = useState<string[]>(project?.deviceIds ?? []);
+    /** Only holds entries for devices the user actually touched in the Configuração step. */
+    const [valveControls, setValveControls] = useState<Record<string, ValveControl>>({});
     const [pending, startTransition] = useTransition();
     const router = useRouter();
 
-    function toggle(id: string) {
+    function toggle(id: string, running: boolean) {
+        if (running && deviceIds.includes(id)) {
+            toast.error("Termine a experiência antes de remover este reator.");
+            return;
+        }
         setDeviceIds((cur) => (cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id]));
     }
 
     function resetToClosed() {
         setOpen(false);
         setStep(0);
+        setValveControls({});
         if (!project) {
             setName("");
             setDescription("");
@@ -81,6 +99,18 @@ export function ProjectFormDialog({ assignableDevices, project, defaultOpen }: P
                 toast.error(result.error);
                 return;
             }
+
+            // Best-effort: the project itself is already saved, so a valve config
+            // failure (e.g. automatic mode without a running experiment) is
+            // surfaced per device rather than blocking the wizard from closing.
+            for (const [deviceId, control] of Object.entries(valveControls)) {
+                const device = assignableDevices.find((d) => d.id === deviceId);
+                const valveResult = await setValveControlAction(deviceId, control);
+                if (!valveResult.success) {
+                    toast.error(`${device?.name ?? deviceId}: ${valveResult.error}`);
+                }
+            }
+
             toast.success(project ? "Projeto atualizado." : "Projeto criado.");
             resetToClosed();
             router.refresh();
@@ -98,19 +128,21 @@ export function ProjectFormDialog({ assignableDevices, project, defaultOpen }: P
                 if (!next) setStep(0);
             }}
         >
-            <DialogTrigger asChild>
-                {project ? (
-                    <Button variant="outline" size="sm">
-                        <Pencil className="size-4" aria-hidden />
-                        Editar
-                    </Button>
-                ) : (
-                    <Button size="sm">
-                        <Plus className="size-4" aria-hidden />
-                        Novo projeto
-                    </Button>
-                )}
-            </DialogTrigger>
+            {!isControlled && (
+                <DialogTrigger asChild>
+                    {project ? (
+                        <Button variant="outline" size="sm">
+                            <Pencil className="size-4" aria-hidden />
+                            Editar
+                        </Button>
+                    ) : (
+                        <Button size="sm">
+                            <Plus className="size-4" aria-hidden />
+                            Novo projeto
+                        </Button>
+                    )}
+                </DialogTrigger>
+            )}
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>{project ? "Editar projeto" : "Novo projeto"}</DialogTitle>
@@ -172,13 +204,24 @@ export function ProjectFormDialog({ assignableDevices, project, defaultOpen }: P
                                 </p>
                             ) : (
                                 <div className="max-h-48 space-y-1.5 overflow-y-auto">
-                                    {assignableDevices.map((device) => (
-                                        <label key={device.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                                            <Checkbox checked={deviceIds.includes(device.id)} onCheckedChange={() => toggle(device.id)} />
-                                            <span className="font-medium">{device.name}</span>
-                                            <span className="tabular text-xs text-muted-foreground">{device.serialNumber}</span>
-                                        </label>
-                                    ))}
+                                    {assignableDevices.map((device) => {
+                                        const running = device.experiments.length > 0;
+                                        const checked = deviceIds.includes(device.id);
+                                        return (
+                                            <label key={device.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                                                <Checkbox
+                                                    checked={checked}
+                                                    disabled={running && checked}
+                                                    onCheckedChange={() => toggle(device.id, running)}
+                                                />
+                                                <span className="font-medium">{device.name}</span>
+                                                <span className="tabular text-xs text-muted-foreground">{device.serialNumber}</span>
+                                                {running && checked && (
+                                                    <span className="ml-auto text-xs text-muted-foreground">experiência em curso</span>
+                                                )}
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </fieldset>
@@ -192,26 +235,32 @@ export function ProjectFormDialog({ assignableDevices, project, defaultOpen }: P
                                     antes de definir a configuração da válvula.
                                 </p>
                             ) : (
-                                selectedDevices.map((device) => {
-                                    const control = (device.config as { control?: ValveControl } | null)?.control ?? DEFAULT_CONTROL;
-                                    const hasPhCalibration =
-                                        deriveLinearPhApprox(
-                                            (device.calibrationConfig as { ph?: unknown } | null)?.ph
-                                        ) !== null;
-                                    return (
-                                        <div key={device.id} className="rounded-lg border border-border p-3">
-                                            <p className="mb-2 text-sm font-semibold">
-                                                {device.name} <span className="text-xs font-normal text-muted-foreground">{device.serialNumber}</span>
-                                            </p>
-                                            <ValveControlForm
-                                                deviceId={device.id}
-                                                initialControl={control}
-                                                hasPhCalibration={hasPhCalibration}
-                                                hasRunningExperiment={device.experiments.length > 0}
-                                            />
-                                        </div>
-                                    );
-                                })
+                                <>
+                                    <p className="text-xs text-muted-foreground">
+                                        Estas alterações só são guardadas ao concluir o assistente.
+                                    </p>
+                                    {selectedDevices.map((device) => {
+                                        const control = (device.config as { control?: ValveControl } | null)?.control ?? DEFAULT_CONTROL;
+                                        const hasPhCalibration =
+                                            deriveLinearPhApprox(
+                                                (device.calibrationConfig as { ph?: unknown } | null)?.ph
+                                            ) !== null;
+                                        return (
+                                            <div key={device.id} className="rounded-lg border border-border p-3">
+                                                <p className="mb-2 text-sm font-semibold">
+                                                    {device.name} <span className="text-xs font-normal text-muted-foreground">{device.serialNumber}</span>
+                                                </p>
+                                                <ValveControlForm
+                                                    deviceId={device.id}
+                                                    initialControl={control}
+                                                    hasPhCalibration={hasPhCalibration}
+                                                    hasRunningExperiment={device.experiments.length > 0}
+                                                    onChange={(next) => setValveControls((v) => ({ ...v, [device.id]: next }))}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </>
                             )}
                         </div>
                     )}

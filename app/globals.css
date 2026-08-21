@@ -29,11 +29,14 @@
   --muted-foreground: #5c6b58;
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --brand: #3f7d53;
-  --brand-foreground: #f3f5ee;
+  --brand: #2ac5c1;
+  --brand-foreground: #0e1712;
   --culture: #8fbf3f;
   --danger: #c4432b;
   --warning: #b9791a;
+  /* Decoupled from --brand on purpose - brand is now teal, but "success" still
+     needs to read as green so it doesn't collide with the teal CO2 metric or
+     read as merely "on-brand" instead of "good". */
   --success: #3f7d53;
 
   --metric-ph: #6b57d6;
@@ -54,21 +57,23 @@
   --muted: #e8ecdf;
   --destructive: #c4432b;
   --input: #d8ddc9;
-  --ring: #3f7d53;
+  --ring: #2ac5c1;
   --chart-1: var(--metric-ph);
   --chart-2: var(--metric-temp);
   --chart-3: var(--metric-turbidity);
   --chart-4: var(--metric-co2);
   --chart-5: var(--culture);
   --radius: 0.5rem;
-  --sidebar: #1a231c;
-  --sidebar-foreground: #e7ede2;
-  --sidebar-primary: var(--culture);
-  --sidebar-primary-foreground: #17231c;
-  --sidebar-accent: #26332a;
-  --sidebar-accent-foreground: #e7ede2;
-  --sidebar-border: #2a3a2f;
-  --sidebar-ring: var(--culture);
+  /* Sidebar now matches the app's own light/dark surface, app-gui-style, instead
+     of staying a fixed dark bezel - aliased so the theme toggle carries it for free. */
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--surface-muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -79,7 +84,7 @@
     --border: #263528;
     --foreground: #e7ede2;
     --muted-foreground: #93a38e;
-    --brand: #6fcb84;
+    --brand: #4dd6d1;
     --brand-foreground: #0e1712;
     --culture: #b7d65a;
     --danger: #e2725a;
@@ -100,7 +105,7 @@
   --border: #263528;
   --foreground: #e7ede2;
   --muted-foreground: #93a38e;
-  --brand: #6fcb84;
+  --brand: #4dd6d1;
   --brand-foreground: #0e1712;
   --culture: #b7d65a;
   --danger: #e2725a;
@@ -215,7 +220,7 @@ body {
  */
 
 .dark {
-  --brand: #6fcb84;
+  --brand: #4dd6d1;
   --brand-foreground: #0e1712;
   --background: #0e1712;
   --foreground: #e7ede2;
@@ -234,20 +239,22 @@ body {
   --destructive: #e2725a;
   --border: #263528;
   --input: #263528;
-  --ring: #6fcb84;
+  --ring: #4dd6d1;
   --chart-1: var(--metric-ph);
   --chart-2: var(--metric-temp);
   --chart-3: var(--metric-turbidity);
   --chart-4: var(--metric-co2);
   --chart-5: var(--culture);
-  --sidebar: #0b120e;
-  --sidebar-foreground: #e7ede2;
-  --sidebar-primary: var(--culture);
-  --sidebar-primary-foreground: #0e1712;
-  --sidebar-accent: #1d2a22;
-  --sidebar-accent-foreground: #e7ede2;
-  --sidebar-border: #1d2a22;
-  --sidebar-ring: var(--culture);
+  /* No --surface token in this legacy block - alias to its own local
+     card/muted/border tokens instead, matching the :root aliasing above. */
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--card-foreground);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--card-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
 }
 
 /*

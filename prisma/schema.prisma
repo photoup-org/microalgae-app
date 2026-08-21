@@ -144,9 +144,10 @@ enum LogCategory {
   SYSTEM
 }
 
-/// Read-only here - this app never creates rows. The edge worker writes threshold
-/// breaches (device_buffer.py) and app-gui writes experiment lifecycle events,
-/// both via app-gui's /api/system-logs webhook, straight into this shared table.
+/// Written by the edge worker via this app's own app/api/system-logs (threshold
+/// breaches from device_buffer.py, hardware online/offline transitions from
+/// device_tracker.py) - and separately by app-gui, which writes experiment
+/// lifecycle events into the same shared table via its own /api/system-logs.
 /// Plain scalar links (no relation()), matching this file's convention for
 /// loosely-coupled ids - see prisma/README.md.
 model SystemLog {

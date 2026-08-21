@@ -3,29 +3,34 @@ import { ExperimentStatus, LogLevel } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatTile } from "@/components/StatTile";
-import { DeviceOnlineSummary } from "@/components/DeviceOnlineSummary";
-import { AlertsWidget } from "@/components/AlertsWidget";
 import { DeviceListWidget } from "@/components/DeviceListWidget";
 import { CalibrationOverviewWidget } from "@/components/CalibrationOverviewWidget";
 import { InventoryDonut } from "@/components/InventoryDonut";
 import { ProjectsWidget } from "@/components/ProjectsWidget";
+import { LogsWidget } from "@/components/LogsWidget";
+import { ExperimentStatusDonut } from "@/components/ExperimentStatusDonut";
+import { SensorChannelsWidget } from "@/components/SensorChannelsWidget";
+import { AttentionNeededWidget } from "@/components/AttentionNeededWidget";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
     const departmentId = process.env.DEPARTMENT_ID;
 
-    const [projects, devices, runningExperiments, recentAlerts] = await Promise.all([
+    const [projects, devices, runningExperiments, recentLogs] = await Promise.all([
         prisma.project.findMany({
             where: { departmentId },
-            include: { createdBy: true, _count: { select: { experiments: true, devices: true } } },
+            include: {
+                createdBy: true,
+                devices: { select: { id: true } },
+                _count: { select: { experiments: true, devices: true } },
+            },
             orderBy: { createdAt: "desc" },
-            take: 3,
+            take: 5,
         }),
         prisma.device.findMany({
             where: { departmentId },
-            select: { id: true, name: true, serialNumber: true, status: true, lastCalibrated: true, calibrationDueDate: true },
+            select: { id: true, name: true, serialNumber: true, status: true, lastCalibrated: true, calibrationDueDate: true, config: true },
             orderBy: { name: "asc" },
         }),
         prisma.experiment.findMany({
@@ -34,12 +39,19 @@ export default async function DashboardPage() {
             orderBy: { lastRunAt: "desc" },
         }),
         prisma.systemLog.findMany({
-            where: { departmentId, level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] } },
+            where: { departmentId, level: { in: [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] } },
             orderBy: { timestamp: "desc" },
-            take: 5,
-            select: { id: true, level: true, message: true, timestamp: true },
+            take: 15,
+            select: { id: true, level: true, category: true, message: true, timestamp: true, metadata: true },
         }),
     ]);
+
+    const experimentStatusCounts = await prisma.experiment.groupBy({
+        by: ["status"],
+        where: { project: { departmentId } },
+        _count: true,
+    });
+    const experimentCountByStatus = Object.fromEntries(experimentStatusCounts.map((e) => [e.status, e._count]));
 
     const alertCounts = await prisma.systemLog.groupBy({
         by: ["projectId"],
@@ -53,14 +65,8 @@ export default async function DashboardPage() {
     const alertCountByProject = Object.fromEntries(alertCounts.map((a) => [a.projectId, a._count]));
 
     return (
-        <AppShell title="Dashboard" >
-            <div className="mb-6 grid gap-3 sm:grid-cols-3">
-                <StatTile label="Projetos" value={projects.length} accent="var(--culture)" />
-                <StatTile label="Experiências em curso" value={runningExperiments.length} accent="var(--brand)" />
-                <StatTile label="Dispositivos online" value={<DeviceOnlineSummary devices={devices} />} accent="var(--metric-co2)" />
-            </div>
-
-            <div className="space-y-6">
+        <AppShell title="Dashboard">
+            <div className="mx-auto max-w-screen-xl space-y-6">
                 {runningExperiments.length > 0 && (
                     <Card>
                         <CardHeader>
@@ -86,26 +92,33 @@ export default async function DashboardPage() {
                     </Card>
                 )}
 
-                <ProjectsWidget
-                    projects={projects.map((p) => ({
-                        id: p.id,
-                        name: p.name,
-                        createdAt: p.createdAt,
-                        createdByName: p.createdBy?.name ?? null,
-                        experimentCount: p._count.experiments,
-                        deviceCount: p._count.devices,
-                        alertCount: alertCountByProject[p.id] ?? 0,
-                    }))}
-                />
-
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <DeviceListWidget devices={devices} />
-                    <AlertsWidget logs={recentAlerts} />
+                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-3">
+                    <ProjectsWidget
+                        projects={projects.map((p) => ({
+                            id: p.id,
+                            name: p.name,
+                            description: p.description,
+                            deviceIds: p.devices.map((d) => d.id),
+                            createdAt: p.createdAt,
+                            createdByName: p.createdBy?.name ?? null,
+                            experimentCount: p._count.experiments,
+                            deviceCount: p._count.devices,
+                            alertCount: alertCountByProject[p.id] ?? 0,
+                        }))}
+                    />
+                    <LogsWidget logs={recentLogs} />
+                    <InventoryDonut devices={devices} />
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-3">
+                    <DeviceListWidget devices={devices} />
                     <CalibrationOverviewWidget devices={devices} />
-                    <InventoryDonut devices={devices} />
+                    <ExperimentStatusDonut counts={experimentCountByStatus} />
+                </div>
+
+                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-2">
+                    <SensorChannelsWidget devices={devices} />
+                    <AttentionNeededWidget devices={devices} />
                 </div>
             </div>
         </AppShell>

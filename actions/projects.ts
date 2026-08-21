@@ -86,8 +86,22 @@ export async function updateProjectAction(projectId: string, input: unknown): Pr
 
     const existing = await prisma.project.findFirst({
         where: { id: projectId, departmentId: process.env.DEPARTMENT_ID },
+        include: { devices: { include: { experiments: { where: { status: { in: ["RUNNING", "PAUSED"] } } } } } },
     });
     if (!existing) return { success: false, error: "Projeto não encontrado." };
+
+    // A device removed here gets its projectId cleared for free below (see the
+    // `set` comment), silently orphaning it from the project while its experiment
+    // keeps logging - mirrors the guard deleteProjectAction already has.
+    const removedWithActiveExperiment = existing.devices.filter(
+        (d) => !deviceIds.includes(d.id) && d.experiments.length > 0
+    );
+    if (removedWithActiveExperiment.length > 0) {
+        return {
+            success: false,
+            error: `Termine a experiência antes de remover: ${removedWithActiveExperiment.map((d) => d.name).join(", ")}.`,
+        };
+    }
 
     await prisma.project.update({
         where: { id: projectId },

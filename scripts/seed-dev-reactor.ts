@@ -87,7 +87,7 @@ async function main() {
                     productId: product.id,
                     departmentId,
                     projectId: project.id,
-                    config: { valveOpen: false },
+                    config: { valveOpen: false, sensors: METRICS },
                 },
             });
             const experiment = await tx.experiment.create({

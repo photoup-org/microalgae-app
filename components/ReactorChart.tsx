@@ -22,6 +22,14 @@ interface ReactorChartProps {
     telemetry: SensorReading[];
     /** Channels this reactor was provisioned with. Empty means all. */
     enabledMetrics: string[];
+    /**
+     * Whether to merge the live MQTT stream on top of `telemetry`. Defaults to true
+     * for the standalone device page. The experiment page passes
+     * `experiment.status === "RUNNING"` - live telemetry flows independent of any
+     * experiment (see CLAUDE.md), so without this an experiment chart keeps
+     * plotting after it's stopped, or shows points before it's ever started.
+     */
+    live?: boolean;
 }
 
 interface WideRow {
@@ -40,7 +48,7 @@ const MAX_POINTS = 1000;
  * four axis gutters would eat the plot, so only the two leading visible metrics
  * render their axis; the rest stay hidden but still scale their line correctly.
  */
-export function ReactorChart({ serialNumber, telemetry, enabledMetrics }: ReactorChartProps) {
+export function ReactorChart({ serialNumber, telemetry, enabledMetrics, live: liveEnabled = true }: ReactorChartProps) {
     const available = useMemo(
         () =>
             REACTOR_SCHEMA.filter(
@@ -50,7 +58,8 @@ export function ReactorChart({ serialNumber, telemetry, enabledMetrics }: Reacto
     );
 
     const [visible, setVisible] = useState<Set<string>>(() => new Set(available.map((m) => m.key)));
-    const liveSeries = useMqttStore((s) => s.chartSeries[serialNumber]);
+    const chartSeries = useMqttStore((s) => s.chartSeries[serialNumber]);
+    const liveSeries = liveEnabled ? chartSeries : undefined;
 
     const shown = available.filter((m) => visible.has(m.key));
 

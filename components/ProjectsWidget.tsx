@@ -1,10 +1,16 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
 import { ProjectCardMenu } from "@/components/ProjectCardMenu";
 
 interface ProjectEntry {
     id: string;
     name: string;
+    description: string | null;
+    deviceIds: string[];
     createdAt: Date;
     createdByName: string | null;
     experimentCount: number;
@@ -16,50 +22,70 @@ function formatDate(date: Date) {
     return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-/** Recent projects with their live counts - mirrors app-gui's dashboard project card, minus the member avatar stack (no team model here). */
+/** One project at a time, cycled via the dots - mirrors app-gui's dashboard project card, minus the member avatar stack (no team model here). */
 export function ProjectsWidget({ projects }: { projects: ProjectEntry[] }) {
+    const [index, setIndex] = useState(0);
+
+    if (projects.length === 0) {
+        return (
+            <Card className="h-full">
+                <CardContent className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+                    Nenhum projeto criado.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const project = projects[Math.min(index, projects.length - 1)];
+
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Projetos</CardTitle>
-                <Link href="/projects" className="text-xs font-medium text-brand hover:underline">
-                    Ver todos
-                </Link>
-            </CardHeader>
-            <CardContent className="space-y-3">
-                {projects.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhum projeto criado.</p>
-                ) : (
-                    projects.map((project) => (
-                        <div key={project.id} className="rounded-lg border border-border p-3">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    <Link href={`/projects/${project.id}`} className="truncate font-semibold hover:underline">
-                                        {project.name}
-                                    </Link>
-                                    <p className="text-xs text-muted-foreground">
-                                        Criado em {formatDate(project.createdAt)}
-                                        {project.createdByName && ` por ${project.createdByName}`}
-                                    </p>
-                                </div>
-                                <ProjectCardMenu projectId={project.id} projectName={project.name} />
-                            </div>
-                            <div className="mt-3 grid grid-cols-3 gap-2">
-                                <div className="rounded-md bg-brand/10 p-2">
-                                    <p className="gauge-label text-brand">Experiências</p>
-                                    <p className="tabular text-lg font-semibold text-brand">{project.experimentCount}</p>
-                                </div>
-                                <div className="rounded-md bg-warning/10 p-2">
-                                    <p className="gauge-label text-warning">Alertas</p>
-                                    <p className="tabular text-lg font-semibold text-warning">{project.alertCount}</p>
-                                </div>
-                                <div className="rounded-md bg-metric-ph/10 p-2">
-                                    <p className="gauge-label text-metric-ph">Sensores</p>
-                                    <p className="tabular text-lg font-semibold text-metric-ph">{project.deviceCount}</p>
-                                </div>
-                            </div>
-                        </div>
-                    ))
+        <Card className="h-full">
+            <CardContent className="flex h-full flex-col justify-between">
+                <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                        <Link href={`/projects/${project.id}`} className="truncate text-lg font-semibold hover:underline">
+                            {project.name}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                            Criado em {formatDate(project.createdAt)}
+                            {project.createdByName && (
+                                <>
+                                    {" por "}
+                                    <span className="font-medium text-brand">{project.createdByName}</span>
+                                </>
+                            )}
+                        </p>
+                    </div>
+                    <ProjectCardMenu project={project} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg bg-brand/10 p-3">
+                        <p className="gauge-label text-brand">Experiências</p>
+                        <p className="tabular mt-1 text-3xl font-semibold text-brand">{project.experimentCount}</p>
+                    </div>
+                    <div className="rounded-lg bg-secondary p-3">
+                        <p className="gauge-label text-muted-foreground">Alertas</p>
+                        <p className="tabular mt-1 text-3xl font-semibold">{project.alertCount}</p>
+                    </div>
+                    <div className="rounded-lg bg-metric-ph/10 p-3">
+                        <p className="gauge-label text-metric-ph">Sensores</p>
+                        <p className="tabular mt-1 text-3xl font-semibold text-metric-ph">{project.deviceCount}</p>
+                    </div>
+                </div>
+
+                {projects.length > 1 && (
+                    <div className="flex justify-center gap-1.5 pt-1">
+                        {projects.map((p, i) => (
+                            <button
+                                key={p.id}
+                                onClick={() => setIndex(i)}
+                                aria-label={`Ver projeto ${p.name}`}
+                                aria-current={i === index}
+                                className={cn("size-1.5 rounded-full transition-colors", i === index ? "bg-brand" : "bg-border")}
+                            />
+                        ))}
+                    </div>
                 )}
             </CardContent>
         </Card>

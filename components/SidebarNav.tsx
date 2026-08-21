@@ -15,7 +15,7 @@ export function SidebarNavItems({ onNavigate, collapsed }: { onNavigate?: () => 
     const pathname = usePathname();
 
     return (
-        <nav className="flex flex-1 flex-col gap-1 p-3">
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3">
             {NAV_ITEMS.map((item) => {
                 // startsWith so /projects/[id] still highlights "Projetos" -
                 // app-gui's version uses strict equality, which doesn't.
@@ -28,11 +28,11 @@ export function SidebarNavItems({ onNavigate, collapsed }: { onNavigate?: () => 
                         onClick={onNavigate}
                         title={collapsed ? item.label : undefined}
                         className={cn(
-                            "flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors",
+                            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
                             collapsed && "justify-center px-2",
                             active
-                                ? "border-sidebar-primary bg-sidebar-accent font-medium text-sidebar-foreground"
-                                : "border-transparent text-sidebar-foreground/60 hover:border-sidebar-border hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                                ? "bg-sidebar-primary/10 font-semibold text-sidebar-primary"
+                                : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                     >
                         <Icon className="size-4 shrink-0" aria-hidden />
@@ -74,7 +74,7 @@ interface SidebarUser {
     email: string;
 }
 
-/** Desktop-only fixed sidebar, styled as a dark instrument-panel bezel regardless of theme. */
+/** Desktop-only fixed sidebar. Tracks the app's own light/dark surface tokens - see the --sidebar-* aliases in globals.css. */
 export function DesktopSidebar({ user }: { user: SidebarUser }) {
     const [collapsed, setCollapsed] = useState(false);
     const [hydrated, setHydrated] = useState(false);
@@ -106,7 +106,7 @@ export function DesktopSidebar({ user }: { user: SidebarUser }) {
     return (
         <aside
             className={cn(
-                "hidden shrink-0 flex-col bg-sidebar lg:flex",
+                "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex",
                 hydrated ? "transition-[width] duration-200" : undefined,
                 collapsed ? "w-16" : "w-60"
             )}

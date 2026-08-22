@@ -27,6 +27,7 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
     const [name, setName] = useState("");
     const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 16));
     const [deviceIds, setDeviceIds] = useState<string[]>([]);
+    const [dbInterval, setDbInterval] = useState(60);
     const [limits, setLimits] = useState<Limits>({});
     const [pending, startTransition] = useTransition();
     const router = useRouter();
@@ -55,6 +56,7 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
                 name,
                 startDate: new Date(startDate),
                 deviceIds,
+                dbInterval,
                 limits: Object.keys(selectedLimits).length > 0 ? selectedLimits : undefined,
             });
             if (!result.success) {
@@ -76,6 +78,24 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
             <div className="space-y-1.5">
                 <Label htmlFor="exp-start">Data de início</Label>
                 <Input id="exp-start" type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+                <Label htmlFor="exp-db-interval">Frequência de gravação (s)</Label>
+                <Input
+                    id="exp-db-interval"
+                    type="number"
+                    min={5}
+                    max={3600}
+                    className="tabular"
+                    value={dbInterval}
+                    onChange={(e) => setDbInterval(Number(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                    De quanto em quanto tempo os dados são gravados na base de dados. A
+                    telemetria em direto (e a deteção de alertas) mantém-se sempre a 1 segundo,
+                    independentemente deste valor.
+                </p>
             </div>
 
             <fieldset className="space-y-2">
@@ -148,7 +168,7 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
                 </p>
             </fieldset>
 
-            <Button onClick={submit} disabled={pending || !name.trim() || deviceIds.length === 0}>
+            <Button onClick={submit} disabled={pending || !name.trim() || deviceIds.length === 0 || !Number.isInteger(dbInterval) || dbInterval < 5 || dbInterval > 3600}>
                 {pending ? "A criar…" : "Criar experiência"}
             </Button>
         </div>

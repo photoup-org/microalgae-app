@@ -13,18 +13,20 @@ const projectSchema = z.object({
 });
 
 /**
- * Devices selectable for a project's pool: unassigned, or already in the project
- * being edited (pass its id when editing so its current pool doesn't vanish from
- * the picker). app-gui's equivalent action claims to filter unassigned devices but
- * doesn't - it actually returns every ACTIVE device regardless of projectId, so an
- * already-assigned device shows as available there. This filters for real.
+ * Devices selectable for a project's pool: every reactor in the department.
+ *
+ * Membership is many-to-many, so a reactor may sit in several projects at once
+ * and nothing here needs to filter by current assignment. That is safe because
+ * exclusivity is enforced per RUN rather than per project - createExperimentAction
+ * refuses any device already attached to a PLANNED/RUNNING/PAUSED experiment, so
+ * two projects can list the same reactor but can never drive it simultaneously.
  *
  * Every exported function in a "use server" file is independently callable over
  * Next.js's action wire protocol, regardless of where it's imported in the UI -
  * proxy.ts gating the page this is rendered from is not a substitute for this
  * check, only a second layer alongside it.
  */
-export async function getAssignableDevicesAction(editingProjectId?: string) {
+export async function getAssignableDevicesAction() {
     try {
         await requireUser();
     } catch {
@@ -32,10 +34,7 @@ export async function getAssignableDevicesAction(editingProjectId?: string) {
     }
 
     return prisma.device.findMany({
-        where: {
-            departmentId: process.env.DEPARTMENT_ID,
-            OR: [{ projectId: null }, ...(editingProjectId ? [{ projectId: editingProjectId }] : [])],
-        },
+        where: { departmentId: process.env.DEPARTMENT_ID },
         include: { experiments: { where: { status: "RUNNING" }, select: { id: true } } },
         orderBy: { name: "asc" },
     });
@@ -90,9 +89,9 @@ export async function updateProjectAction(projectId: string, input: unknown): Pr
     });
     if (!existing) return { success: false, error: "Projeto não encontrado." };
 
-    // A device removed here gets its projectId cleared for free below (see the
-    // `set` comment), silently orphaning it from the project while its experiment
-    // keeps logging - mirrors the guard deleteProjectAction already has.
+    // Removing a device here detaches it from the project below (see the `set`
+    // comment), silently orphaning it while its experiment keeps logging -
+    // mirrors the guard deleteProjectAction already has.
     const removedWithActiveExperiment = existing.devices.filter(
         (d) => !deviceIds.includes(d.id) && d.experiments.length > 0
     );
@@ -108,8 +107,9 @@ export async function updateProjectAction(projectId: string, input: unknown): Pr
         data: {
             name,
             description: description || null,
-            // `set` replaces the whole pool - devices removed from the list get
-            // projectId cleared for free (Device.project onDelete: SetNull).
+            // `set` replaces this project's whole pool. On a many-to-many that only
+            // detaches the device from THIS project - any other project holding the
+            // same reactor keeps it.
             devices: { set: deviceIds.map((id) => ({ id })) },
         },
     });

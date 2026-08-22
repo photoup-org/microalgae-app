@@ -7,6 +7,8 @@ import { DeviceListWidget } from "@/components/DeviceListWidget";
 import { CalibrationOverviewWidget } from "@/components/CalibrationOverviewWidget";
 import { InventoryDonut } from "@/components/InventoryDonut";
 import { ProjectsWidget } from "@/components/ProjectsWidget";
+import { ExperimentElapsed } from "@/components/ExperimentElapsed";
+import { ExperimentQuickControls } from "@/components/ExperimentQuickControls";
 import { LogsWidget } from "@/components/LogsWidget";
 import { ExperimentStatusDonut } from "@/components/ExperimentStatusDonut";
 import { SensorChannelsWidget } from "@/components/SensorChannelsWidget";
@@ -74,19 +76,33 @@ export default async function DashboardPage() {
                         </CardHeader>
                         <CardContent className="space-y-2">
                             {runningExperiments.map((exp) => (
-                                <Link
+                                // A row, not a Link: the controls are buttons, which cannot sit inside an anchor.
+                                <div
                                     key={exp.id}
-                                    href={`/projects/${exp.projectId}/experiments/${exp.id}`}
-                                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+                                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
                                 >
-                                    <span>
-                                        <span className="font-medium">{exp.name}</span>
+                                    <p className="min-w-0 truncate">
+                                        <Link
+                                            href={`/projects/${exp.projectId}/experiments/${exp.id}`}
+                                            className="font-medium hover:underline"
+                                        >
+                                            {exp.name}
+                                        </Link>
                                         <span className="text-muted-foreground"> · {exp.project.name}</span>
-                                    </span>
-                                    <span className="tabular text-muted-foreground">
-                                        {exp.devices.length} dispositivo{exp.devices.length === 1 ? "" : "s"}
-                                    </span>
-                                </Link>
+                                    </p>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <span className="tabular text-muted-foreground">
+                                            <ExperimentElapsed
+                                                accumulatedSeconds={exp.accumulatedSeconds}
+                                                lastRunAt={exp.lastRunAt?.toISOString() ?? null}
+                                            />
+                                        </span>
+                                        <span className="tabular hidden text-muted-foreground sm:inline">
+                                            {exp.devices.length} dispositivo{exp.devices.length === 1 ? "" : "s"}
+                                        </span>
+                                        <ExperimentQuickControls experimentId={exp.id} name={exp.name} />
+                                    </div>
+                                </div>
                             ))}
                         </CardContent>
                     </Card>

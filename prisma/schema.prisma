@@ -75,7 +75,9 @@ model Project {
 
   createdBy   User         @relation("ProjectCreator", fields: [createdById], references: [id])
   experiments Experiment[]
-  devices     Device[]
+  /// Many-to-many: a reactor can be shared by several projects. Exclusivity is
+  /// enforced per RUN, not per project - see createExperimentAction.
+  devices     Device[]     @relation("DeviceProjects")
 }
 
 /// One perpetual RUNNING experiment per reactor. Never surfaced in the UI, but
@@ -107,14 +109,13 @@ model Device {
   updatedAt    DateTime     @updatedAt
   /// Control state for this reactor: { valveOpen, targetPh, phTolerance }.
   config       Json?        @default("{}")
-  projectId    String?
 
   calibrationConfig  Json?
   lastCalibrated     DateTime?
   calibrationDueDate DateTime?
 
   product      HardwareProduct     @relation(fields: [productId], references: [id])
-  project      Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projects     Project[]           @relation("DeviceProjects")
   experiments  Experiment[]
   calibrations CalibrationRecord[]
 }

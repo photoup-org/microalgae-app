@@ -68,7 +68,10 @@ export async function updateDeviceAction(deviceId: string, input: unknown): Prom
         return { success: false, error: `Configuração inválida: ${detail}.` };
     }
 
-    const device = await prisma.device.findFirst({ where: deviceWhere(deviceId) });
+    const device = await prisma.device.findFirst({
+        where: deviceWhere(deviceId),
+        include: { projects: { select: { id: true } } },
+    });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
 
     const config = (device.config ?? {}) as Record<string, unknown>;
@@ -106,7 +109,10 @@ export async function setValveAction(deviceId: string, open: boolean): Promise<A
         return { success: false, error: "Estado da válvula inválido." };
     }
 
-    const device = await prisma.device.findFirst({ where: deviceWhere(deviceId) });
+    const device = await prisma.device.findFirst({
+        where: deviceWhere(deviceId),
+        include: { projects: { select: { id: true } } },
+    });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
 
     if (open && !(await hasRunningExperiment(device.id))) {
@@ -129,7 +135,8 @@ export async function setValveAction(deviceId: string, open: boolean): Promise<A
     });
 
     revalidatePath(`/devices/${deviceId}`);
-    if (device.projectId) revalidatePath(`/projects/${device.projectId}`);
+    // A reactor can sit in several projects now, so every one of them shows stale data.
+    for (const project of device.projects) revalidatePath(`/projects/${project.id}`);
     return { success: true };
 }
 
@@ -185,7 +192,10 @@ export async function setValveControlAction(deviceId: string, input: unknown): P
         return { success: false, error: parsed.error.issues[0]?.message ?? "Configuração inválida." };
     }
 
-    const device = await prisma.device.findFirst({ where: deviceWhere(deviceId) });
+    const device = await prisma.device.findFirst({
+        where: deviceWhere(deviceId),
+        include: { projects: { select: { id: true } } },
+    });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
 
     // The firmware has no calibration data of its own and never receives the
@@ -225,6 +235,7 @@ export async function setValveControlAction(deviceId: string, input: unknown): P
     });
 
     revalidatePath(`/devices/${deviceId}`);
-    if (device.projectId) revalidatePath(`/projects/${device.projectId}`);
+    // A reactor can sit in several projects now, so every one of them shows stale data.
+    for (const project of device.projects) revalidatePath(`/projects/${project.id}`);
     return { success: true };
 }

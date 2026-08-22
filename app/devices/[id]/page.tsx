@@ -21,7 +21,10 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
 
     const device = await prisma.device.findFirst({
         where: { id, departmentId: process.env.DEPARTMENT_ID },
-        include: { project: true, experiments: { where: { status: "RUNNING" }, select: { id: true } } },
+        include: {
+            projects: { orderBy: { name: "asc" } },
+            experiments: { where: { status: "RUNNING" }, select: { id: true } },
+        },
     });
     if (!device) notFound();
 
@@ -59,12 +62,17 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                     <p className="tabular mt-1 text-sm text-muted-foreground">{device.serialNumber}</p>
                     {config.description && <p className="mt-2 max-w-prose text-sm">{config.description}</p>}
                     <p className="mt-2 text-sm text-muted-foreground">
-                        Projeto:{" "}
-                        {device.project ? (
-                            <Link href={`/projects/${device.project.id}`} className="hover:underline">{device.project.name}</Link>
-                        ) : (
-                            "não atribuído"
-                        )}
+                        {device.projects.length === 1 ? "Projeto: " : "Projetos: "}
+                        {device.projects.length === 0
+                            ? "não atribuído"
+                            : device.projects.map((project, index) => (
+                                  <span key={project.id}>
+                                      {index > 0 && ", "}
+                                      <Link href={`/projects/${project.id}`} className="hover:underline">
+                                          {project.name}
+                                      </Link>
+                                  </span>
+                              ))}
                     </p>
                 </div>
                 <DeviceEditDialog

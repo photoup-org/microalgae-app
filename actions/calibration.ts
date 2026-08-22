@@ -99,6 +99,7 @@ export async function calibrateDeviceAction(
 
     const device = await prisma.device.findFirst({
         where: { id: deviceId, departmentId: process.env.DEPARTMENT_ID },
+        include: { projects: { select: { id: true } } },
     });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
 
@@ -151,6 +152,7 @@ export async function calibrateDeviceAction(
     }
 
     revalidatePath(`/devices/${device.id}`);
-    if (device.projectId) revalidatePath(`/projects/${device.projectId}`);
+    // A reactor can sit in several projects now, so every one of them shows stale data.
+    for (const project of device.projects) revalidatePath(`/projects/${project.id}`);
     return { success: true };
 }

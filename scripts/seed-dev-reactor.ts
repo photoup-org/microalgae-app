@@ -62,16 +62,19 @@ async function main() {
 
     const existing = await prisma.device.findUnique({
         where: { serialNumber: SERIAL },
-        include: { project: { include: { experiments: true } } },
+        include: { projects: { include: { experiments: true } } },
     });
 
     let deviceId: string;
     let experimentId: string;
 
-    if (existing?.project) {
-        deviceId = existing.id;
-        experimentId = existing.project.experiments[0]?.id ?? "";
-        console.log(`Reusing reactor "${existing.project.name}" (${existing.project.id})`);
+    // Membership is many-to-many now; this script only ever seeds one project per
+    // device, so the first is the one it created.
+    const existingProject = existing?.projects[0];
+    if (existingProject) {
+        deviceId = existing!.id;
+        experimentId = existingProject.experiments[0]?.id ?? "";
+        console.log(`Reusing reactor "${existingProject.name}" (${existingProject.id})`);
     } else {
         if (existing) throw new Error(`Device ${SERIAL} exists but has no project; clean it up first.`);
 
@@ -86,7 +89,7 @@ async function main() {
                     status: DeviceStatus.PENDING_CONNECTION,
                     productId: product.id,
                     departmentId,
-                    projectId: project.id,
+                    projects: { connect: { id: project.id } },
                     config: { valveOpen: false, sensors: METRICS },
                 },
             });
@@ -114,7 +117,7 @@ async function main() {
         departmentId,
         deviceMap: { [SERIAL]: SERIAL },
         deviceSns: { [SERIAL]: SERIAL },
-        settings: { liveInterval: 5, dbInterval: 60 },
+        settings: { liveInterval: 1, dbInterval: 60 },
     });
 
     console.log(`Published cmd/experiments/${experimentId}/start`);

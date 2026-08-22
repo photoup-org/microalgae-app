@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function DevicesPage() {
     const devices = await prisma.device.findMany({
         where: { departmentId: process.env.DEPARTMENT_ID },
-        include: { project: true },
+        include: { projects: { orderBy: { name: "asc" } } },
         orderBy: { createdAt: "desc" },
     });
 
@@ -53,12 +53,20 @@ export default async function DevicesPage() {
                                         <TableCell className="tabular text-muted-foreground">{device.serialNumber}</TableCell>
                                         <TableCell><DeviceStatusBadge status={device.status} /></TableCell>
                                         <TableCell>
-                                            {device.project ? (
-                                                <Link href={`/projects/${device.project.id}`} className="hover:underline">
-                                                    {device.project.name}
-                                                </Link>
-                                            ) : (
+                                            {device.projects.length === 0 ? (
                                                 <span className="text-muted-foreground">—</span>
+                                            ) : (
+                                                <span className="flex flex-wrap gap-x-2 gap-y-1">
+                                                    {device.projects.map((project) => (
+                                                        <Link
+                                                            key={project.id}
+                                                            href={`/projects/${project.id}`}
+                                                            className="hover:underline"
+                                                        >
+                                                            {project.name}
+                                                        </Link>
+                                                    ))}
+                                                </span>
                                             )}
                                         </TableCell>
                                         <TableCell>

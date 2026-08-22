@@ -71,6 +71,31 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
     const reported = live?.[VALVE_METRIC];
     const confirmed = reported === undefined || reported === null ? null : Number(reported) === 1;
 
+    /**
+     * Whether the node ever acknowledged the open we asked for. Seeded from
+     * initialOpen: a stored open intent from a previous session is necessarily
+     * spent, since the firmware closes on its own maxOpenSeconds timer regardless
+     * of what this app remembers.
+     */
+    const [sawConfirmedOpen, setSawConfirmedOpen] = useState(initialOpen);
+
+    // Follow the firmware's automatic close. Adjusting state during render rather
+    // than in an effect - an effect would paint one frame with the switch still on.
+    //
+    // Only an open the node CONFIRMED is treated as auto-closed, which is what
+    // keeps the divergence warning below meaningful: a command that never landed
+    // never gets confirmed, so it still reports as diverged instead of being
+    // quietly switched off. Deliberately not written back to Device.config - that
+    // column holds commanded intent, and closing is the device's own doing, so
+    // pushing a redundant close down to it would be wrong.
+    if (commanded && confirmed === true && !sawConfirmedOpen) {
+        setSawConfirmedOpen(true);
+    }
+    if (commanded && confirmed === false && sawConfirmedOpen && !pending) {
+        setSawConfirmedOpen(false);
+        setCommanded(false);
+    }
+
     useEffect(() => {
         if (confirmed !== null) setLastSeen(Date.now());
     }, [confirmed, live]);
@@ -88,6 +113,9 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
             return;
         }
         setCommanded(next);
+        // Fresh command, so nothing is acknowledged yet: an open that never reaches
+        // the node stays diverged instead of being mistaken for an auto-close.
+        setSawConfirmedOpen(false);
         startTransition(async () => {
             const result = await setValveAction(deviceId, next);
             if (!result.success) {

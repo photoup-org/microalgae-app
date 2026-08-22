@@ -31,7 +31,12 @@ const DEVICE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function pickWindow(startMs: number, endMs: number, targetPoints = 720): string {
     const seconds = Math.max(1, Math.floor((endMs - startMs) / 1000 / targetPoints));
 
-    if (seconds < 10) return "10s";
+    // Below 10s the window has to follow `seconds` exactly, not clamp up to "10s":
+    // a hard 10s floor silently averages two 5s-apart points into one bucket, so a
+    // 5s acquisition frequency reads back as 10s. Aggregating finer than the real
+    // write interval is lossless (each point lands in its own bucket), so erring
+    // small here is safe; the targetPoints cap still handles long ranges.
+    if (seconds < 10) return `${seconds}s`;
     if (seconds < 60) return `${Math.ceil(seconds / 10) * 10}s`;
     if (seconds < 3600) return `${Math.ceil(seconds / 60)}m`;
     if (seconds < 86400) return `${Math.ceil(seconds / 3600)}h`;

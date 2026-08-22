@@ -22,6 +22,15 @@ Deliberately omitted: every commercial model (`Organization`, `Department`,
 `PlanTier`, `Order`, `OrderItem`, `Address`, `ProjectMember`) plus `Alert`
 and `SensorReading`.
 
+**Device ↔ Project is many-to-many** (`@relation("DeviceProjects")`, join table
+`_DeviceProjects`). A reactor can sit in several projects at once; the old
+single `Device.projectId` column was dropped in app-gui migration
+`20260822100000_device_projects_many_to_many`, which backfills the join table
+before dropping it. Exclusivity is enforced per **run**, not per project:
+`createExperimentAction` refuses any device already attached to a
+PLANNED/RUNNING/PAUSED experiment, so two projects can list the same reactor but
+can never drive it at the same time.
+
 Two consequences worth knowing:
 
 - **`Department` is not a model.** `User.departmentId`, `Project.departmentId` and

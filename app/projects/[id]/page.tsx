@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Plus } from "lucide-react";
 import { prisma } from "@/lib/core/prisma";
-import { getAssignableDevicesAction } from "@/actions/projects";
 import { AppShell } from "@/components/AppShell";
-import { ProjectFormDialog } from "@/components/ProjectFormDialog";
+import { ProjectCardMenu } from "@/components/ProjectCardMenu";
+import { ExperimentActionsMenu } from "@/components/ExperimentActionsMenu";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
 import { ExperimentStatusBadge } from "@/components/ExperimentStatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,8 +25,6 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
     });
     if (!project) notFound();
 
-    const assignableDevices = await getAssignableDevicesAction(project.id);
-
     return (
         <AppShell>
             <Link href="/projects" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -39,14 +37,17 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
                     <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
                     {project.description && <p className="mt-1 max-w-prose text-sm text-muted-foreground">{project.description}</p>}
                 </div>
-                <ProjectFormDialog
-                    assignableDevices={assignableDevices}
+                <ProjectCardMenu
                     project={{
                         id: project.id,
                         name: project.name,
                         description: project.description,
                         deviceIds: project.devices.map((d) => d.id),
                     }}
+                    // Already on the details page, so that entry would be a no-op, and a
+                    // deleted project has no page left to refresh into.
+                    hideDetails
+                    afterDelete="to-projects"
                 />
             </div>
 
@@ -106,6 +107,7 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
                                         <TableHead>Estado</TableHead>
                                         <TableHead>Início</TableHead>
                                         <TableHead>Dispositivos</TableHead>
+                                        <TableHead className="w-px" />
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -121,6 +123,16 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
                                                 {exp.startDate.toLocaleDateString("pt-PT")}
                                             </TableCell>
                                             <TableCell className="text-muted-foreground">{exp.devices.length}</TableCell>
+                                            <TableCell className="text-right">
+                                                <ExperimentActionsMenu
+                                                    experimentId={exp.id}
+                                                    projectId={project.id}
+                                                    name={exp.name}
+                                                    status={exp.status}
+                                                    dbInterval={((exp.settings ?? {}) as { dbInterval?: number }).dbInterval ?? 60}
+                                                    afterDelete="refresh"
+                                                />
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>

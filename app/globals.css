@@ -4,18 +4,28 @@
 /*
  ---break---
  */
-@custom-variant dark (&:is(.dark *));
+/*
+ * Must match BOTH strategies. next-themes is configured with
+ * attribute="data-theme" (see app/layout.tsx), so a `.dark`-only variant meant
+ * every `dark:` utility inside the shadcn primitives silently never fired.
+ */
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 /*
  * Cultivation Console palette. Light palette on bare :root, dark ("console
  * mode") redefined in both the media query and the explicit attribute, so a
  * theme toggle wins in either direction.
  *
- * Brand is a real moss/chlorophyll green, not generic SaaS teal. Each sensor
- * channel keeps its own instrument-true hue (violet pH indicator, amber
- * thermometer, culture-density green for turbidity, gas-blue CO2) - these are
- * the single source of truth and lib/reactor-schema.ts must stay in sync with
- * them (see comment there).
+ * Neutrals are a plain modern gray ramp, deliberately hue-free: the palette used
+ * to tint every surface and border olive/sage, which fought the teal brand and
+ * made the metric hues read as decoration rather than instrument readings. Gray
+ * surfaces let the colored channels be the only saturated thing on screen.
+ *
+ * Color is reserved for meaning: --brand (teal) for identity and interactive
+ * state, and each sensor channel's own instrument-true hue (violet pH indicator,
+ * amber thermometer, culture-density green for turbidity, gas-blue CO2). Those
+ * metric tokens are the single source of truth and lib/reactor-schema.ts must
+ * stay in sync with them (see comment there).
  *
  * --accent / --accent-foreground are shadcn's own semantic tokens (a neutral
  * hover background used throughout Button/menu components) and must stay
@@ -24,13 +34,13 @@
  */
 :root {
   --surface: #ffffff;
-  --surface-muted: #e8ecdf;
-  --border: #d8ddc9;
-  --muted-foreground: #5c6b58;
+  --surface-muted: #eef1f5;
+  --border: #e2e6ec;
+  --muted-foreground: #64748b;
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --brand: #2ac5c1;
-  --brand-foreground: #0e1712;
+  --brand-foreground: #0f172a;
   --culture: #8fbf3f;
   --danger: #c4432b;
   --warning: #b9791a;
@@ -44,19 +54,19 @@
   --metric-turbidity: #7a9b2e;
   --metric-co2: #2b7f94;
 
-  --background: #f3f5ee;
-  --foreground: #17231c;
+  --background: #f4f6f8;
+  --foreground: #111827;
   --card: #ffffff;
-  --card-foreground: #17231c;
+  --card-foreground: #111827;
   --popover: #ffffff;
-  --popover-foreground: #17231c;
+  --popover-foreground: #111827;
   --primary: var(--brand);
   --primary-foreground: var(--brand-foreground);
-  --secondary: #e8ecdf;
-  --secondary-foreground: #17231c;
-  --muted: #e8ecdf;
+  --secondary: #eef1f5;
+  --secondary-foreground: #111827;
+  --muted: #eef1f5;
   --destructive: #c4432b;
-  --input: #d8ddc9;
+  --input: #d7dde5;
   --ring: #2ac5c1;
   --chart-1: var(--metric-ph);
   --chart-2: var(--metric-temp);
@@ -78,14 +88,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #0e1712;
-    --surface: #16201a;
-    --surface-muted: #1d2a22;
-    --border: #263528;
-    --foreground: #e7ede2;
-    --muted-foreground: #93a38e;
+    --background: #0f1115;
+    --surface: #16181d;
+    --surface-muted: #1e2128;
+    --border: #2a2e37;
+    --foreground: #e6e8eb;
+    --muted-foreground: #9aa1ab;
     --brand: #4dd6d1;
-    --brand-foreground: #0e1712;
+    --brand-foreground: #0f1115;
     --culture: #b7d65a;
     --danger: #e2725a;
     --warning: #e0a947;
@@ -95,18 +105,35 @@
     --metric-temp: #f0895a;
     --metric-turbidity: #b7d65a;
     --metric-co2: #5cb9ce;
+
+    /* shadcn's own token set, aliased onto the dark surfaces above. Without these
+       it inherits the light :root values, which is why cards rendered white with
+       near-black text in dark mode - the legacy .dark block that used to carry
+       them never applies under the data-theme strategy. */
+    --card: var(--surface);
+    --card-foreground: var(--foreground);
+    --popover: var(--surface);
+    --popover-foreground: var(--foreground);
+    --secondary: var(--surface-muted);
+    --secondary-foreground: var(--foreground);
+    --muted: var(--surface-muted);
+    --accent: var(--surface-muted);
+    --accent-foreground: var(--foreground);
+    --input: var(--border);
+    --destructive: var(--danger);
+    --ring: var(--brand);
   }
 }
 
 :root[data-theme="dark"] {
-  --background: #0e1712;
-  --surface: #16201a;
-  --surface-muted: #1d2a22;
-  --border: #263528;
-  --foreground: #e7ede2;
-  --muted-foreground: #93a38e;
+  --background: #0f1115;
+  --surface: #16181d;
+  --surface-muted: #1e2128;
+  --border: #2a2e37;
+  --foreground: #e6e8eb;
+  --muted-foreground: #9aa1ab;
   --brand: #4dd6d1;
-  --brand-foreground: #0e1712;
+  --brand-foreground: #0f1115;
   --culture: #b7d65a;
   --danger: #e2725a;
   --warning: #e0a947;
@@ -116,6 +143,20 @@
   --metric-temp: #f0895a;
   --metric-turbidity: #b7d65a;
   --metric-co2: #5cb9ce;
+
+  /* See the note in the media-query block above - same aliases, same reason. */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface-muted);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--foreground);
+  --input: var(--border);
+  --destructive: var(--danger);
+  --ring: var(--brand);
 }
 
 @theme inline {
@@ -221,24 +262,24 @@ body {
 
 .dark {
   --brand: #4dd6d1;
-  --brand-foreground: #0e1712;
-  --background: #0e1712;
-  --foreground: #e7ede2;
-  --card: #16201a;
-  --card-foreground: #e7ede2;
-  --popover: #16201a;
-  --popover-foreground: #e7ede2;
+  --brand-foreground: #0f1115;
+  --background: #0f1115;
+  --foreground: #e6e8eb;
+  --card: #16181d;
+  --card-foreground: #e6e8eb;
+  --popover: #16181d;
+  --popover-foreground: #e6e8eb;
   --primary: var(--brand);
   --primary-foreground: var(--brand-foreground);
-  --secondary: #1d2a22;
-  --secondary-foreground: #e7ede2;
-  --muted: #1d2a22;
-  --muted-foreground: #93a38e;
-  --accent: #1d2a22;
-  --accent-foreground: #e7ede2;
+  --secondary: #1e2128;
+  --secondary-foreground: #e6e8eb;
+  --muted: #1e2128;
+  --muted-foreground: #9aa1ab;
+  --accent: #1e2128;
+  --accent-foreground: #e6e8eb;
   --destructive: #e2725a;
-  --border: #263528;
-  --input: #263528;
+  --border: #2a2e37;
+  --input: #2a2e37;
   --ring: #4dd6d1;
   --chart-1: var(--metric-ph);
   --chart-2: var(--metric-temp);

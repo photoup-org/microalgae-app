@@ -22,8 +22,16 @@ interface ProjectSummary {
     deviceIds: string[];
 }
 
+interface ProjectCardMenuProps {
+    project: ProjectSummary;
+    /** Set on the project's own details page, where "Detalhes" would go nowhere. */
+    hideDetails?: boolean;
+    /** The details page has to leave after a delete; a list can re-render in place. */
+    afterDelete?: "refresh" | "to-projects";
+}
+
 /** Project row's "..." menu: edit opens the wizard in place, details navigates, delete asks first via ConfirmDialog. */
-export function ProjectCardMenu({ project }: { project: ProjectSummary }) {
+export function ProjectCardMenu({ project, hideDetails, afterDelete = "refresh" }: ProjectCardMenuProps) {
     const [editOpen, setEditOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [assignableDevices, setAssignableDevices] = useState<AssignableDevice[] | null>(null);
@@ -35,7 +43,7 @@ export function ProjectCardMenu({ project }: { project: ProjectSummary }) {
         setEditOpen(true);
         if (assignableDevices === null) {
             startLoadTransition(async () => {
-                const devices = await getAssignableDevicesAction(project.id);
+                const devices = await getAssignableDevicesAction();
                 setAssignableDevices(devices);
             });
         }
@@ -50,7 +58,8 @@ export function ProjectCardMenu({ project }: { project: ProjectSummary }) {
             }
             toast.success("Projeto eliminado.");
             setDeleteOpen(false);
-            router.refresh();
+            if (afterDelete === "to-projects") router.push("/projects");
+            else router.refresh();
         });
     }
 
@@ -63,12 +72,14 @@ export function ProjectCardMenu({ project }: { project: ProjectSummary }) {
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-56">
-                    <DropdownMenuItem asChild>
-                        <a href={`/projects/${project.id}`} className="flex items-center gap-2 whitespace-nowrap">
-                            <Info className="size-4" />
-                            Detalhes
-                        </a>
-                    </DropdownMenuItem>
+                    {!hideDetails && (
+                        <DropdownMenuItem asChild>
+                            <a href={`/projects/${project.id}`} className="flex items-center gap-2 whitespace-nowrap">
+                                <Info className="size-4" />
+                                Detalhes
+                            </a>
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={openEdit} className="whitespace-nowrap">
                         <Pencil className="size-4" />
                         Editar

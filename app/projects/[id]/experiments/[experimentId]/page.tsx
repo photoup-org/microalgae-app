@@ -12,7 +12,9 @@ import { ExperimentActionsMenu } from "@/components/ExperimentActionsMenu";
 import { ReactorGauges } from "@/components/ReactorGauges";
 import { ReactorChart } from "@/components/ReactorChart";
 import { ValvePanel } from "@/components/ValvePanel";
-import { ExperimentLogsWidget } from "@/components/ExperimentLogsWidget";
+import { LogsCard } from "@/components/LogsCard";
+import { CalibrationTable } from "@/components/CalibrationTable";
+import { getCalibrationRows } from "@/lib/calibration-rows";
 import { SensorReading } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +44,8 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
         take: 50,
         select: { id: true, level: true, category: true, message: true, timestamp: true, deviceId: true },
     });
+
+    const calibrationRows = await getCalibrationRows(experiment.devices);
 
     const window = experimentQueryWindow(experiment);
     const deviceTelemetry = await Promise.all(
@@ -134,13 +138,26 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                     hasPhCalibration={Boolean((device.calibrationConfig as { ph?: unknown } | null)?.ph)}
                                     hasRunningExperiment={experiment.status === "RUNNING"}
                                 />
-                                <ExperimentLogsWidget
+                                <LogsCard
+                                    title="Alertas da experiência"
+                                    emptyMessage="Sem alertas nesta experiência."
                                     logs={experimentLogs.filter((log) => log.deviceId === device.id || log.deviceId === null)}
                                 />
                             </div>
                         </section>
                     );
                 })}
+
+                {/* One table for the whole run rather than a panel per device: the old
+                    per-device panel showed a bare "Última: <date>" with no way to tell
+                    which reactor it described. */}
+                <div className="border-t border-border pt-6">
+                    <CalibrationTable
+                        rows={calibrationRows}
+                        locked={experiment.status === "RUNNING"}
+                        lockedReason="A calibração está bloqueada enquanto a experiência decorre — recalibrar a meio alteraria a transformação aplicada às leituras já registadas."
+                    />
+                </div>
             </div>
         </AppShell>
     );

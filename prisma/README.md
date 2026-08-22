@@ -31,6 +31,14 @@ before dropping it. Exclusivity is enforced per **run**, not per project:
 PLANNED/RUNNING/PAUSED experiment, so two projects can list the same reactor but
 can never drive it at the same time.
 
+**`CalibrationRecord.metric`** (added in app-gui migration
+`20260822120000_calibration_record_metric`) names the channel a calibration
+applied to — `"ph"`, `"turbidity"`. It is nullable only for rows written before
+the column existed; every new record sets it. `Device.lastCalibrated` /
+`calibrationDueDate` stay device-level and cannot distinguish channels, so any
+per-sensor calibration view must read the records, not those two columns — see
+`lib/calibration-rows.ts`.
+
 Two consequences worth knowing:
 
 - **`Department` is not a model.** `User.departmentId`, `Project.departmentId` and

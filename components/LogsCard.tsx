@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LEVEL_LABEL } from "@/lib/log-levels";
 
-export interface ExperimentLogEntry {
+export interface LogCardEntry {
     id: string;
     level: LogLevel;
     category: LogCategory;
@@ -31,26 +31,38 @@ function formatTimestamp(date: Date) {
 }
 
 /**
- * Alerts and events for ONE run, scoped by SystemLog.experimentId - mostly the
- * threshold breaches the edge worker raises against the min/max limits set when
- * the experiment was created (device_buffer.py), so this is where a reactor
- * drifting out of range shows up.
+ * A scrolling list of SystemLog rows, scoped by whoever fetches them.
  *
- * Replaces the calibration panel that used to sit here: calibrating a probe
- * mid-run would invalidate the run's own data, so that belongs on the device page
- * (where it still lives) rather than beside a running experiment.
+ * Used for both an experiment's own alerts (scoped by experimentId - mostly the
+ * threshold breaches the edge worker raises against the min/max limits set at
+ * creation) and one reactor's recent history (scoped by deviceId). The scoping is
+ * the caller's job so the same card can front either query.
  */
-export function ExperimentLogsWidget({ logs }: { logs: ExperimentLogEntry[] }) {
+export function LogsCard({
+    title,
+    logs,
+    emptyMessage,
+    action,
+}: {
+    title: string;
+    logs: LogCardEntry[];
+    emptyMessage: string;
+    /** Rendered right-aligned in the header - a filter or count control. */
+    action?: React.ReactNode;
+}) {
     return (
         <Card className="h-full">
             <CardHeader>
-                <CardTitle className="text-base">Alertas da experiência</CardTitle>
+                <CardTitle className="flex items-center justify-between gap-3 text-base">
+                    <span className="min-w-0 truncate">{title}</span>
+                    {action}
+                </CardTitle>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-y-auto">
                 {logs.length === 0 ? (
                     <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 p-4 text-sm text-success">
                         <CircleCheck className="size-4 shrink-0" aria-hidden />
-                        Sem alertas nesta experiência.
+                        {emptyMessage}
                     </div>
                 ) : (
                     <div className="space-y-1">

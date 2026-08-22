@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ExperimentStatus } from "@prisma/client";
+import { ExperimentStatus, LogLevel, LogCategory } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
 import { requireUser } from "@/lib/core/auth/user";
 import { REACTOR_SCHEMA, unmetRequirements } from "@/lib/reactor-schema";
 import { deriveLinearPhApprox } from "@/lib/calibration-approx";
+import { DEVICE_LOG_LIMITS } from "@/lib/device-log-limits";
 import type { ActionResult } from "@/lib/action-result";
 
 /** Scopes every device lookup to this deployment's single department. */
@@ -238,4 +239,38 @@ export async function setValveControlAction(deviceId: string, input: unknown): P
     // A reactor can sit in several projects now, so every one of them shows stale data.
     for (const project of device.projects) revalidatePath(`/projects/${project.id}`);
     return { success: true };
+}
+
+/**
+ * Recent SystemLog rows for one reactor, for the device page's alert card.
+ *
+ * Every exported "use server" function is callable over the action wire protocol
+ * regardless of where it is imported, so the device is re-scoped to this
+ * deployment's department here rather than trusting the id from the client.
+ */
+export async function getDeviceLogsAction(
+    deviceId: string,
+    limit: number
+): Promise<ActionResult<{ id: string; level: LogLevel; category: LogCategory; message: string; timestamp: Date }[]>> {
+    try {
+        await requireUser();
+    } catch {
+        return { success: false, error: "Não autenticado." };
+    }
+
+    if (!(DEVICE_LOG_LIMITS as readonly number[]).includes(limit)) {
+        return { success: false, error: "Limite inválido." };
+    }
+
+    const device = await prisma.device.findFirst({ where: deviceWhere(deviceId), select: { id: true } });
+    if (!device) return { success: false, error: "Dispositivo não encontrado." };
+
+    const logs = await prisma.systemLog.findMany({
+        where: { departmentId: process.env.DEPARTMENT_ID, deviceId: device.id },
+        orderBy: { timestamp: "desc" },
+        take: limit,
+        select: { id: true, level: true, category: true, message: true, timestamp: true },
+    });
+
+    return { success: true, data: logs };
 }

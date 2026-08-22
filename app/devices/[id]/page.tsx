@@ -2,19 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/core/prisma";
-import { getDeviceTelemetry } from "@/lib/db/influx";
+import { getCalibrationRows } from "@/lib/calibration-rows";
 import { AppShell } from "@/components/AppShell";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
 import { DeviceEditDialog } from "@/components/DeviceEditDialog";
 import { ReactorGauges } from "@/components/ReactorGauges";
 import { ReactorChart } from "@/components/ReactorChart";
 import { ValvePanel } from "@/components/ValvePanel";
-import { CalibrationPanel } from "@/components/CalibrationPanel";
-import { SensorReading } from "@/lib/types";
+import { CalibrationTable } from "@/components/CalibrationTable";
+import { DeviceLogsCard } from "@/components/DeviceLogsCard";
 
 export const dynamic = "force-dynamic";
-
-const HISTORY_WINDOW_HOURS = 6;
 
 export default async function DevicePage({ params }: PageProps<"/devices/[id]">) {
     const { id } = await params;
@@ -35,16 +33,19 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
         control?: unknown;
     };
     const sensors = config.sensors ?? [];
+    const calibrationRows = await getCalibrationRows([device]);
 
-    let telemetry: SensorReading[] = [];
-    let telemetryFailed = false;
-    try {
-        const since = new Date(Date.now() - HISTORY_WINDOW_HOURS * 3600 * 1000);
-        telemetry = await getDeviceTelemetry(device.serialNumber, since);
-    } catch (error) {
-        telemetryFailed = true;
-        console.error(`[device ${id}] InfluxDB read failed:`, error);
-    }
+    // This reactor's own recent history: threshold breaches, online/offline
+    // transitions, calibrations. Every level, unlike the dashboard feed - on a
+    // single device the critical ones are exactly what you came to see. The count
+    // is adjustable from the card; this is the initial page.
+    const DEFAULT_LOG_LIMIT = 10;
+    const deviceLogs = await prisma.systemLog.findMany({
+        where: { departmentId: process.env.DEPARTMENT_ID, deviceId: device.id },
+        orderBy: { timestamp: "desc" },
+        take: DEFAULT_LOG_LIMIT,
+        select: { id: true, level: true, category: true, message: true, timestamp: true },
+    });
 
     return (
         <AppShell>
@@ -84,15 +85,17 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
             </div>
 
             <div className="space-y-6">
-                {telemetryFailed && (
-                    <p className="rounded-md border border-border bg-secondary p-3 text-sm text-warning">
-                        Não foi possível ler o histórico. A apresentar apenas valores em tempo real.
-                    </p>
-                )}
+                {/* Live telemetry only - no InfluxDB history. This page is a window on
+                    what the node is reporting right now; the recorded series belongs to
+                    an experiment, which is what scopes it to a run. */}
+                <ReactorGauges serialNumber={device.serialNumber} telemetry={[]} enabledMetrics={sensors} />
 
-                <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
-
-                <ReactorChart serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} />
+                <ReactorChart
+                    serialNumber={device.serialNumber}
+                    telemetry={[]}
+                    enabledMetrics={sensors}
+                    liveOnly
+                />
 
                 <div className="grid gap-6 md:grid-cols-2">
                     <ValvePanel
@@ -103,14 +106,27 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                         hasPhCalibration={Boolean((device.calibrationConfig as { ph?: unknown } | null)?.ph)}
                         hasRunningExperiment={device.experiments.length > 0}
                     />
-                    <CalibrationPanel
-                        deviceId={device.id}
-                        serialNumber={device.serialNumber}
-                        enabledMetrics={sensors}
-                        lastCalibrated={device.lastCalibrated?.toISOString() ?? null}
-                        calibrationDueDate={device.calibrationDueDate?.toISOString() ?? null}
-                    />
+                    {/* Taken out of flow at md+ so the alert list cannot stretch the row:
+                        a grid track sizes to its tallest item, so a long list would set
+                        the height and leave the valve panel padded with dead space. The
+                        row now follows the valve panel and the card scrolls inside it. */}
+                    <div className="relative min-h-0">
+                        <div className="md:absolute md:inset-0">
+                            <DeviceLogsCard
+                                deviceId={device.id}
+                                initialLogs={deviceLogs}
+                                initialLimit={DEFAULT_LOG_LIMIT}
+                            />
+                        </div>
+                    </div>
                 </div>
+
+                <CalibrationTable
+                    rows={calibrationRows}
+                    showDevice={false}
+                    locked={device.experiments.length > 0}
+                    lockedReason="A calibração está bloqueada enquanto uma experiência decorre neste reator — recalibrar a meio alteraria a transformação aplicada às leituras já registadas."
+                />
             </div>
         </AppShell>
     );

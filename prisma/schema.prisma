@@ -181,6 +181,9 @@ model CalibrationRecord {
   pointsApplied Json?
   oldConfig     Json?
   newConfig     Json?
+  /// Which sensor channel this calibration applied to ("ph", "turbidity", ...).
+  /// Null only for rows written before the column existed.
+  metric        String?
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)

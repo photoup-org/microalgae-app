@@ -129,6 +129,7 @@ export async function calibrateDeviceAction(
             timestamp: now,
             calibratedAt: now,
             validUntil,
+            metric,
             performedBy: user.name || user.email,
             pointsApplied: points as unknown as Prisma.InputJsonArray,
             oldConfig: (oldConfig[metric] ?? Prisma.JsonNull) as Prisma.InputJsonValue,

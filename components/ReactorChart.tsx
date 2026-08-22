@@ -43,6 +43,14 @@ interface ReactorChartProps {
      * writes it instead of the line sitting frozen until a manual reload.
      */
     dbInterval?: number;
+    /**
+     * Plot the live stream as the primary solid series and skip the recorded/
+     * pending split entirely. For the device page, which is a window on what the
+     * node reports right now: with no experiment there is nothing being written to
+     * InfluxDB, so "not yet recorded" would be true of every point and the whole
+     * chart would render dashed.
+     */
+    liveOnly?: boolean;
 }
 
 interface WideRow {
@@ -79,6 +87,7 @@ export function ReactorChart({
     live: liveEnabled = true,
     experimentId,
     dbInterval,
+    liveOnly = false,
 }: ReactorChartProps) {
     const available = useMemo(
         () =>
@@ -120,9 +129,14 @@ export function ReactorChart({
         };
     }, [liveEnabled, experimentId, dbInterval, serialNumber]);
 
+    // In liveOnly mode the live stream IS the series, so it takes the "recorded"
+    // slot and there is no pending tail to distinguish.
     const { rows, savedCount, hasLiveTail } = useMemo(
-        () => buildRows(recorded, liveSeries ?? [], shown),
-        [recorded, liveSeries, shown]
+        () =>
+            liveOnly
+                ? buildRows(liveSeries ?? [], [], shown)
+                : buildRows(recorded, liveSeries ?? [], shown),
+        [liveOnly, recorded, liveSeries, shown]
     );
 
     function toggle(key: string) {

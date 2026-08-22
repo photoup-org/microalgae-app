@@ -117,6 +117,8 @@ async function main() {
         departmentId,
         deviceMap: { [SERIAL]: SERIAL },
         deviceSns: { [SERIAL]: SERIAL },
+        deviceLabels: { [SERIAL]: NAME },
+        deviceNames: { [SERIAL]: NAME },
         settings: { liveInterval: 1, dbInterval: 60 },
     });
 

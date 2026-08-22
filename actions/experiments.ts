@@ -35,11 +35,18 @@ const DEFAULT_DB_INTERVAL_SECONDS = 60;
  */
 async function publishExperimentStart(
     experimentId: string,
-    serialNumbers: string[],
+    devices: { serialNumber: string; name: string | null }[],
     deviceLimits?: Record<string, Record<string, number>>,
     dbInterval = DEFAULT_DB_INTERVAL_SECONDS
 ) {
-    const deviceMap = Object.fromEntries(serialNumbers.map((sn) => [sn, sn]));
+    const deviceMap = Object.fromEntries(devices.map((d) => [d.serialNumber, d.serialNumber]));
+    // The worker writes the alert text itself and only knows the names we send
+    // here: device_buffer.py falls back to the literal "Dispositivo Desconhecido"
+    // for any db_id missing from deviceLabels, which is what every threshold alert
+    // read before this. Keyed by serialNumber to match deviceMap's db_id.
+    const deviceLabels = Object.fromEntries(
+        devices.map((d) => [d.serialNumber, d.name ?? d.serialNumber])
+    );
     await publishMQTTMessage(`cmd/experiments/${experimentId}/start`, {
         storageFrequency: dbInterval,
         aggregationStrategy: "AVG",
@@ -47,6 +54,8 @@ async function publishExperimentStart(
         departmentId: process.env.DEPARTMENT_ID,
         deviceMap,
         deviceSns: deviceMap,
+        deviceLabels,
+        deviceNames: deviceLabels,
         // `devices` here is what the edge worker's threshold-breach check reads
         // (device_buffer.py: `{metric}Min`/`{metric}Max` per serialNumber) - without
         // it the check silently no-ops, since an empty dict has no keys to breach.
@@ -205,7 +214,7 @@ export async function updateExperimentLifecycleAction(
     try {
         if (newStatus === ExperimentStatus.RUNNING) {
             const settings = (experiment.settings ?? {}) as { devices?: Record<string, Record<string, number>>; dbInterval?: number };
-            await publishExperimentStart(experimentId, experiment.devices.map((d) => d.serialNumber), settings.devices, settings.dbInterval);
+            await publishExperimentStart(experimentId, experiment.devices, settings.devices, settings.dbInterval);
         } else if (newStatus === ExperimentStatus.PAUSED || newStatus === ExperimentStatus.COMPLETED) {
             await publishMQTTMessage(`cmd/experiments/${experimentId}/flush`, {});
         }
@@ -361,7 +370,7 @@ export async function resyncExperimentsAction(): Promise<ActionResult<{ synced: 
     for (const experiment of experiments) {
         try {
             const settings = (experiment.settings ?? {}) as { devices?: Record<string, Record<string, number>>; dbInterval?: number };
-            await publishExperimentStart(experiment.id, experiment.devices.map((d) => d.serialNumber), settings.devices, settings.dbInterval);
+            await publishExperimentStart(experiment.id, experiment.devices, settings.devices, settings.dbInterval);
             synced++;
         } catch (error) {
             console.error(`[resync] Failed for experiment ${experiment.id}:`, error);

@@ -1,16 +1,32 @@
 "use client";
 
+import { Router, Server } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useMqttStore } from "@/hooks/useMqttStore";
 
-function Row({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel: string }) {
+function Row({
+    icon: Icon,
+    ok,
+    onLabel,
+    offLabel,
+    collapsed,
+}: {
+    icon: typeof Router;
+    ok: boolean;
+    onLabel: string;
+    offLabel: string;
+    collapsed?: boolean;
+}) {
     return (
-        <span className="gauge-label flex items-center gap-2 text-sidebar-foreground/60">
-            <span
-                className={`h-2 w-2 rounded-full ${ok ? "bg-success live-dot" : "bg-danger"}`}
-                aria-hidden
-            />
-            {ok ? onLabel : offLabel}
-        </span>
+        <div
+            title={collapsed ? (ok ? onLabel : offLabel) : undefined}
+            className={cn("flex items-center gap-2", collapsed && "justify-center")}
+        >
+            <Icon className={cn("size-4 shrink-0", ok ? "text-success" : "text-danger")} aria-hidden />
+            {!collapsed && (
+                <span className="gauge-label text-sidebar-foreground/60">{ok ? onLabel : offLabel}</span>
+            )}
+        </div>
     );
 }
 
@@ -20,15 +36,15 @@ function Row({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel
  * Prisma while both of these are down - this is what actually tells the operator
  * whether live telemetry/control can reach the edge at all.
  */
-export function ConnectionBadge() {
+export function ConnectionBadge({ collapsed }: { collapsed?: boolean }) {
     const isConnected = useMqttStore((s) => s.isConnected);
     const edgeServerStatus = useMqttStore((s) => s.edgeServerStatus);
     const edgeOnline = isConnected && edgeServerStatus === "online";
 
     return (
-        <div className="space-y-1">
-            <Row ok={isConnected} onLabel="Mosquitto ligado" offLabel="Mosquitto sem ligação" />
-            <Row ok={edgeOnline} onLabel="Servidor edge ligado" offLabel="Servidor edge sem ligação" />
+        <div className="space-y-1.5">
+            <Row icon={Router} ok={isConnected} onLabel="Mosquitto ligado" offLabel="Mosquitto sem ligação" collapsed={collapsed} />
+            <Row icon={Server} ok={edgeOnline} onLabel="Servidor edge ligado" offLabel="Servidor edge sem ligação" collapsed={collapsed} />
         </div>
     );
 }

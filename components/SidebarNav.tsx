@@ -123,7 +123,7 @@ export function DesktopSidebar({ user }: { user: SidebarUser }) {
             </div>
             <SidebarNavItems collapsed={collapsed} />
             <div className="space-y-2 border-t border-sidebar-border p-3">
-                {!collapsed && <ConnectionBadge />}
+                <ConnectionBadge collapsed={collapsed} />
                 <SidebarUserMenu user={user} collapsed={collapsed} />
             </div>
         </aside>

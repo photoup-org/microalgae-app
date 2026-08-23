@@ -64,12 +64,12 @@ export const config = {
         /*
          * Everything except the edge-facing API routes and static assets.
          *
-         * api/webhooks, api/telemetry, and api/system-logs are called by the edge
-         * worker, which has a bearer token but no session cookie. Left in the
-         * matcher they would be redirected to /auth/login, so the worker would see
-         * a redirect instead of its endpoint and retry into its dead-letter queue.
-         * They authenticate themselves against EDGE_WEBHOOK_SECRET instead.
+         * api/webhooks, api/telemetry, api/system-logs and api/edge are called by
+         * the edge worker, which has a bearer token but no session cookie. Left in
+         * the matcher they would be redirected to /auth/login, so the worker would
+         * see a redirect instead of its endpoint and retry into its dead-letter
+         * queue. They authenticate themselves against EDGE_WEBHOOK_SECRET instead.
          */
-        "/((?!api/webhooks|api/telemetry|api/system-logs|_next/static|_next/image|favicon.ico).*)",
+        "/((?!api/webhooks|api/telemetry|api/system-logs|api/edge|_next/static|_next/image|favicon.ico).*)",
     ],
 };

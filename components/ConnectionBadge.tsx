@@ -64,7 +64,7 @@ function Link({ icon: Icon, name, state, fault, collapsed, connector }: LinkProp
             </div>
 
             {!collapsed && state !== "live" && (
-                <span className={cn("pl-[34px] text-[10px] leading-tight", state === "down" ? "text-danger/80" : "text-muted-foreground")}>
+                <span className={cn("pl-8.5 text-[10px] leading-tight", state === "down" ? "text-danger/80" : "text-muted-foreground")}>
                     {fault}
                 </span>
             )}

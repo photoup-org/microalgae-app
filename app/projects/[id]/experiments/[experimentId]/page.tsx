@@ -69,8 +69,8 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
 
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-semibold tracking-tight">{experiment.name}</h1>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="text-2xl font-semibold tracking-tight break-words">{experiment.name}</h1>
                         <ExperimentStatusBadge status={experiment.status} />
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -93,7 +93,7 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                     </div>
                 )}
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <ExperimentControls experimentId={experiment.id} status={experiment.status} />
                     <ExperimentActionsMenu
                         experimentId={experiment.id}
@@ -113,9 +113,11 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
 
                     return (
                         <section key={device.id} className="space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0">
-                            <h2 className="font-medium">
-                                <Link href={`/devices/${device.id}`} className="hover:underline">{device.name}</Link>
-                                <span className="tabular ml-2 text-xs font-normal text-muted-foreground">{device.serialNumber}</span>
+                            {/* Wraps to its own line on a phone rather than pushing the
+                                serial off the edge. */}
+                            <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-medium">
+                                <Link href={`/devices/${device.id}`} className="break-words hover:underline">{device.name}</Link>
+                                <span className="tabular text-xs font-normal break-all text-muted-foreground">{device.serialNumber}</span>
                             </h2>
 
                             <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} live={experiment.status === "RUNNING"} />

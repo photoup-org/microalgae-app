@@ -29,7 +29,11 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
         <div className="flex h-screen overflow-hidden">
             <MqttConnectionManager />
             <DesktopSidebar user={sidebarUser} />
-            <div className="flex min-h-0 flex-1 flex-col">
+            {/* min-w-0: a flex item defaults to min-width:auto, so a wide child (the
+                calibration table, a chart) would stretch this column past the viewport
+                and scroll the whole page sideways instead of scrolling inside its own
+                overflow-x-auto container. */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
                     <MobileNav user={sidebarUser} />
                     {title && (

@@ -139,7 +139,7 @@ export function ValvePanel({ deviceId, serialNumber, initialOpen, initialControl
             </CardHeader>
             <CardContent className="space-y-5">
                 <div className="flex items-center justify-between gap-4">
-                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                         <ValveStatusText confirmed={confirmed} isStale={isStale} pending={pending} />
                         {confirmed && !isStale && <ValveBubbles />}
                     </p>

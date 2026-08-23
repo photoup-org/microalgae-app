@@ -54,13 +54,15 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                 Dispositivos
             </Link>
 
-            <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-semibold tracking-tight">{device.name}</h1>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="text-2xl font-semibold tracking-tight break-words">{device.name}</h1>
                         <DeviceStatusBadge status={device.status} />
                     </div>
-                    <p className="tabular mt-1 text-sm text-muted-foreground">{device.serialNumber}</p>
+                    {/* Serials are long and unbreakable, so they need an explicit
+                        break opportunity or they set the page's minimum width. */}
+                    <p className="tabular mt-1 text-sm break-all text-muted-foreground">{device.serialNumber}</p>
                     {config.description && <p className="mt-2 max-w-prose text-sm">{config.description}</p>}
                     <p className="mt-2 text-sm text-muted-foreground">
                         {device.projects.length === 1 ? "Projeto: " : "Projetos: "}

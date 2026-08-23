@@ -20,6 +20,8 @@ interface MqttState {
     chartSeries: Record<string, SensorReading[]>;
     /** hardware id -> "online" | "offline", from the retained LWT topic. */
     deviceStatus: Record<string, string>;
+    /** "online" | "offline" | null (no retained message seen yet), from gateway/{id}/status. */
+    edgeServerStatus: string | null;
 }
 
 interface MqttActions {
@@ -38,6 +40,7 @@ interface MqttActions {
 let liveValuesBuffer: MqttState["liveValues"] = {};
 let chartSeriesBuffer: MqttState["chartSeries"] = {};
 let statusBuffer: MqttState["deviceStatus"] = {};
+let edgeServerStatusBuffer: string | null = null;
 let isBufferDirty = false;
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -48,6 +51,7 @@ export const useMqttStore = create<MqttState & MqttActions>((set, get) => ({
     liveValues: {},
     chartSeries: {},
     deviceStatus: {},
+    edgeServerStatus: null,
 
     connect: () => {
         if (get().client) return;
@@ -68,6 +72,7 @@ export const useMqttStore = create<MqttState & MqttActions>((set, get) => ({
                 `ui/live/department/${DEPARTMENT_ID}/device/+/sync`,
                 `ui/live/department/${DEPARTMENT_ID}/device/+/raw`,
                 "nodes/+/status",
+                "gateway/+/status",
             ]);
 
             // Re-subscribe anything registered through subscribe() before we connected.
@@ -83,6 +88,13 @@ export const useMqttStore = create<MqttState & MqttActions>((set, get) => ({
             // nodes/{id}/status carries a bare string, not JSON.
             if (parts[0] === "nodes" && parts[2] === "status") {
                 statusBuffer = { ...statusBuffer, [parts[1]]: buffer.toString() };
+                isBufferDirty = true;
+                return;
+            }
+
+            // gateway/{id}/status: the edge worker's own retained LWT, bare string.
+            if (parts[0] === "gateway" && parts[2] === "status") {
+                edgeServerStatusBuffer = buffer.toString();
                 isBufferDirty = true;
                 return;
             }
@@ -147,11 +159,13 @@ export const useMqttStore = create<MqttState & MqttActions>((set, get) => ({
                 liveValues: { ...state.liveValues, ...liveValuesBuffer },
                 chartSeries: { ...state.chartSeries, ...chartSeriesBuffer },
                 deviceStatus: { ...state.deviceStatus, ...statusBuffer },
+                edgeServerStatus: edgeServerStatusBuffer ?? state.edgeServerStatus,
             }));
 
             liveValuesBuffer = {};
             chartSeriesBuffer = {};
             statusBuffer = {};
+            edgeServerStatusBuffer = null;
         }, FLUSH_INTERVAL_MS);
     },
 
@@ -163,6 +177,7 @@ export const useMqttStore = create<MqttState & MqttActions>((set, get) => ({
         liveValuesBuffer = {};
         chartSeriesBuffer = {};
         statusBuffer = {};
+        edgeServerStatusBuffer = null;
         isBufferDirty = false;
 
         get().client?.end(true);

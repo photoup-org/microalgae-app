@@ -33,6 +33,8 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
     const router = useRouter();
     /** hardware id -> "online" | "offline", from the retained nodes/{id}/status LWT topic. */
     const liveStatus = useMqttStore((s) => s.deviceStatus);
+    /** Without this, a broken WS link leaves liveStatus empty forever and every device silently reads as available. */
+    const isConnected = useMqttStore((s) => s.isConnected);
 
     function toggle(id: string) {
         setDeviceIds((cur) => (cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id]));
@@ -105,7 +107,7 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
                 ) : (
                     <div className="space-y-2">
                         {devices.map((device) => {
-                            const offline = liveStatus[device.serialNumber] === "offline";
+                            const offline = !isConnected || liveStatus[device.serialNumber] === "offline";
                             const disabled = device.status !== "ACTIVE" || device.isAllocated || offline;
                             const selected = deviceIds.includes(device.id);
                             const metrics = REACTOR_SCHEMA.filter((m) => device.sensors.includes(m.key));
@@ -124,7 +126,13 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
                                             </div>
                                             {disabled && (
                                                 <span className="text-xs text-muted-foreground">
-                                                    {device.isAllocated ? "já alocado" : offline ? "offline" : "indisponível"}
+                                                    {device.isAllocated
+                                                        ? "já alocado"
+                                                        : !isConnected
+                                                          ? "sem ligação ao edge"
+                                                          : offline
+                                                            ? "offline"
+                                                            : "indisponível"}
                                                 </span>
                                             )}
                                         </div>

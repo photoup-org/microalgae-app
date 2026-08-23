@@ -3,6 +3,7 @@
 import { DeviceStatus } from "@prisma/client";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useMqttStore } from "@/hooks/useMqttStore";
+import { isDeviceOnline } from "@/lib/device-status";
 
 const SLICES = [
     { key: "active", label: "Ativo", color: "var(--brand)" },
@@ -15,13 +16,13 @@ interface DeviceEntry {
     serialNumber: string;
 }
 
-/** Device status breakdown across the department's whole registered fleet - a persisted ACTIVE device whose retained MQTT status reports offline counts as Offline, not Ativo. */
+/** Device status breakdown across the department's whole registered fleet. "Ativo" means the reactor is reachable right now, not merely commissioned - see isDeviceOnline. */
 export function InventoryDonut({ devices }: { devices: DeviceEntry[] }) {
     const liveStatus = useMqttStore((s) => s.deviceStatus);
 
     function sliceKey(device: DeviceEntry): (typeof SLICES)[number]["key"] {
         if (device.status === "MAINTENANCE") return "maintenance";
-        if (device.status === "ACTIVE" && liveStatus[device.serialNumber] !== "offline") return "active";
+        if (isDeviceOnline(device, liveStatus)) return "active";
         return "offline";
     }
 

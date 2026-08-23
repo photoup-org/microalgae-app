@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { useMqttStore } from "@/hooks/useMqttStore";
+import { isDeviceOnline } from "@/lib/device-status";
 
 interface DeviceEntry {
     id: string;
@@ -18,7 +19,7 @@ interface DeviceEntry {
 /** Every reactor node registered to this department, regardless of project assignment. */
 export function DeviceListWidget({ devices }: { devices: DeviceEntry[] }) {
     const liveStatus = useMqttStore((s) => s.deviceStatus);
-    const online = devices.filter((d) => d.status === "ACTIVE" && liveStatus[d.serialNumber] !== "offline").length;
+    const online = devices.filter((d) => isDeviceOnline(d, liveStatus)).length;
 
     return (
         <Card className="h-full">
@@ -32,7 +33,7 @@ export function DeviceListWidget({ devices }: { devices: DeviceEntry[] }) {
                     <p className="text-sm text-muted-foreground">Nenhum dispositivo registado.</p>
                 ) : (
                     devices.slice(0, 5).map((device) => {
-                        const offline = device.status === "ACTIVE" && liveStatus[device.serialNumber] === "offline";
+                        const offline = device.status === "ACTIVE" && !isDeviceOnline(device, liveStatus);
                         return (
                             <Link
                                 key={device.id}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createExperimentAction } from "@/actions/experiments";
 import { useMqttStore } from "@/hooks/useMqttStore";
+import { isDeviceOnline } from "@/lib/device-status";
 import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,7 +108,7 @@ export function NewExperimentForm({ projectId, devices }: { projectId: string; d
                 ) : (
                     <div className="space-y-2">
                         {devices.map((device) => {
-                            const offline = !isConnected || liveStatus[device.serialNumber] === "offline";
+                            const offline = !isDeviceOnline(device, liveStatus);
                             const disabled = device.status !== "ACTIVE" || device.isAllocated || offline;
                             const selected = deviceIds.includes(device.id);
                             const metrics = REACTOR_SCHEMA.filter((m) => device.sensors.includes(m.key));

@@ -114,6 +114,15 @@ model Device {
   lastCalibrated     DateTime?
   calibrationDueDate DateTime?
 
+  /// Firmware version this node last reported on nodes/{id}/metadata, and when.
+  ///
+  /// The timestamp is not decoration: the metadata topic is retained, so a node
+  /// that has been unplugged for a month still has a version on file. Showing it
+  /// without saying how old it is would present a guess as a fact - and the OTA
+  /// rollout decides who is outdated from exactly this value.
+  firmwareVersion    String?
+  firmwareReportedAt DateTime?
+
   product      HardwareProduct     @relation(fields: [productId], references: [id])
   projects     Project[]           @relation("DeviceProjects")
   experiments  Experiment[]

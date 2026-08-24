@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
+import { FirmwareCheckButton } from "@/components/FirmwareCheckButton";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,14 @@ export default async function DevicesPage() {
 
     return (
         <AppShell>
-            <div className="mb-6">
-                <h1 className="text-2xl font-semibold tracking-tight">Dispositivos</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    Aparecem automaticamente aqui assim que um nó ESP32 se liga pela primeira vez.
-                </p>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-tight">Dispositivos</h1>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        Aparecem automaticamente aqui assim que um nó ESP32 se liga pela primeira vez.
+                    </p>
+                </div>
+                <FirmwareCheckButton />
             </div>
 
             {devices.length === 0 ? (
@@ -36,6 +40,7 @@ export default async function DevicesPage() {
                                 <TableHead>Nome</TableHead>
                                 <TableHead>Número de série</TableHead>
                                 <TableHead>Estado</TableHead>
+                                <TableHead>Firmware</TableHead>
                                 <TableHead>Projeto</TableHead>
                                 <TableHead>Canais</TableHead>
                             </TableRow>
@@ -52,6 +57,26 @@ export default async function DevicesPage() {
                                         </TableCell>
                                         <TableCell className="tabular text-muted-foreground">{device.serialNumber}</TableCell>
                                         <TableCell><DeviceStatusBadge status={device.status} /></TableCell>
+                                        <TableCell>
+                                            {device.firmwareVersion ? (
+                                                <span className="flex flex-col leading-tight">
+                                                    <span className="tabular">{device.firmwareVersion}</span>
+                                                    {/* The metadata topic is retained, so a node unplugged for a
+                                                        month still reports a version. Saying when it said so is
+                                                        what stops that reading as current. */}
+                                                    {device.firmwareReportedAt && (
+                                                        <span className="tabular text-xs text-muted-foreground">
+                                                            {device.firmwareReportedAt.toLocaleDateString("pt-PT", {
+                                                                day: "2-digit",
+                                                                month: "2-digit",
+                                                            })}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground">—</span>
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             {device.projects.length === 0 ? (
                                                 <span className="text-muted-foreground">—</span>

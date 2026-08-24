@@ -274,3 +274,31 @@ export async function getDeviceLogsAction(
 
     return { success: true, data: logs };
 }
+
+/**
+ * Asks the edge worker to check for a firmware release now.
+ *
+ * The worker polls on its own schedule; this exists because "did my release
+ * actually go out?" is a question you ask right after publishing one, and waiting
+ * out a poll interval to find out is its own small misery.
+ *
+ * main.py subscribes to cmd/gateway/ota/check specifically - cmd/experiments/#
+ * does not cover it, and that branch has no else-clause, so an unmatched topic is
+ * silently dropped.
+ */
+export async function checkFirmwareUpdatesAction(): Promise<ActionResult> {
+    try {
+        await requireUser();
+    } catch {
+        return { success: false, error: "Não autenticado." };
+    }
+
+    try {
+        await publishMQTTMessage("cmd/gateway/ota/check", {});
+    } catch (error) {
+        console.error("[checkFirmwareUpdates] Publish failed:", error);
+        return { success: false, error: "Não foi possível contactar o servidor local." };
+    }
+
+    return { success: true };
+}

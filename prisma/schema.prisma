@@ -198,6 +198,23 @@ model SystemLog {
 ///
 /// Rows are disposable: a 404 or 410 from the push service means the browser threw
 /// the subscription away, and lib/services/push.ts deletes the row when it sees one.
+/// Single row, written only in the read-only cloud mirror.
+///
+/// The mirror is a copy of the Pi's database that the cloud instance falls back to
+/// when the Pi is unreachable. Without a recorded sync time the fallback would
+/// present stale rows as if they were current, which is worse than showing
+/// nothing - so the banner reads this and states how old the data is.
+///
+/// Exists in the primary schema too because both databases are created from this
+/// one file; in the primary it simply stays empty.
+model MirrorSync {
+  /// Always "singleton". A table with one row needs a fixed key, not a cuid.
+  id           String   @id
+  syncedAt     DateTime
+  /// Row counts per table at sync time, for spotting a truncated copy.
+  rowCounts    Json?
+}
+
 model PushSubscription {
   id           String    @id @default(cuid())
   departmentId String

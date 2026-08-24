@@ -35,6 +35,22 @@ series). Run it once, after `migrate:deploy` has created the tables:
 SOURCE_DATABASE_URL=<neon> TARGET_DATABASE_URL=<pi> DEPARTMENT_ID=<id> npm run copy-department
 ```
 
+## The read-only cloud mirror
+
+The Pi being primary means the cloud console dies with the Pi. `MIRROR_DATABASE_URL`
+(cloud instance only) softens that: a second database holds a full copy, refreshed
+by POSTing to `/api/mirror/sync` on a schedule.
+
+Reads fail over to it automatically — `lib/core/prisma.ts` extends the client so an
+unreachable primary retries the same query against the mirror. **Writes never fail
+over.** A mutation against a copy would be discarded on the next sync, and a valve
+command would report success without reaching the reactor, so writes throw instead.
+`MirrorBanner` states how old the copy is, because a silent stand-in is worse than
+an error page.
+
+The mirror is never written to except by the sync. That is what keeps this safe
+where bidirectional sync would not be: one writer, so no merge policy to get wrong.
+
 ## What this schema carries, and what it never did
 
 Carried: `User`, `Project`, `Experiment`, `Device`, `HardwareProduct`,

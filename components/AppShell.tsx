@@ -9,6 +9,7 @@ import { MqttConnectionManager } from "@/components/MqttConnectionManager";
 import { DesktopSidebar } from "@/components/SidebarNav";
 import { MobileNav } from "@/components/MobileNav";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { MirrorBanner } from "@/components/MirrorBanner";
 import { Button } from "@/components/ui/button";
 
 interface AppShellProps {
@@ -50,6 +51,7 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
                 overflow-x-auto container. */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <OfflineBanner />
+                <MirrorBanner />
                 <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
                     <MobileNav user={sidebarUser} />
                     {title && (

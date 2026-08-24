@@ -78,6 +78,8 @@ export const config = {
          * the matcher they would be redirected to /auth/login, so the worker would
          * see a redirect instead of its endpoint and retry into its dead-letter
          * queue. They authenticate themselves against EDGE_WEBHOOK_SECRET instead.
+         * api/mirror is excluded for the same reason - it is called by a scheduler,
+         * not a person, and authenticates with that same secret.
          *
          * manifest.webmanifest and the PWA icons are excluded for a similar reason:
          * the browser fetches them while deciding whether the app is installable,
@@ -85,6 +87,6 @@ export const config = {
          * prompt, and therefore no push on iOS, which only allows it for an
          * installed app. They expose nothing but the app's name and logo.
          */
-        "/((?!api/webhooks|api/telemetry|api/system-logs|api/edge|manifest.webmanifest|icon-|badge-|_next/static|_next/image|favicon.ico).*)",
+        "/((?!api/webhooks|api/telemetry|api/system-logs|api/edge|api/mirror|manifest.webmanifest|icon-|badge-|_next/static|_next/image|favicon.ico).*)",
     ],
 };

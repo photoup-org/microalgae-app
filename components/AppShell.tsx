@@ -18,7 +18,13 @@ interface AppShellProps {
 export async function AppShell({ children, title, eyebrow }: AppShellProps) {
     const [alertCount, user] = await Promise.all([
         prisma.systemLog.count({
-            where: { departmentId: process.env.DEPARTMENT_ID, level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] } },
+            // Unacknowledged only. Counting every WARN+ ever written left the dot
+            // permanently lit, which made it mean nothing.
+            where: {
+                departmentId: process.env.DEPARTMENT_ID,
+                level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] },
+                acknowledgedAt: null,
+            },
         }),
         getCurrentUser(),
     ]);
@@ -48,11 +54,22 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
                             <Plus className="size-4" aria-hidden />
                         </Link>
                     </Button>
-                    <Button variant="ghost" size="icon" asChild className="relative" aria-label="Alertas">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        asChild
+                        className="relative"
+                        aria-label={alertCount > 0 ? `Alertas: ${alertCount} por tratar` : "Alertas"}
+                    >
                         <Link href="/incidents">
                             <Bell className="size-4" aria-hidden />
                             {alertCount > 0 && (
-                                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger" aria-hidden />
+                                <span
+                                    className="tabular absolute top-0.5 right-0.5 flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-4 text-white"
+                                    aria-hidden
+                                >
+                                    {alertCount > 99 ? "99+" : alertCount}
+                                </span>
                             )}
                         </Link>
                     </Button>

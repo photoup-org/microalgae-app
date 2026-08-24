@@ -3,6 +3,7 @@ import { z } from "zod";
 import { LogLevel, LogCategory, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { isEdgeAuthorized } from "@/lib/core/edge-auth";
+import { dedupKeyFor } from "@/lib/incident-dedup";
 
 /**
  * SystemLog sink for the edge worker: threshold-breach alerts (device_buffer.py)
@@ -60,6 +61,44 @@ export async function POST(req: NextRequest) {
         ? await prisma.device.findFirst({ where: { serialNumber: deviceId, departmentId }, select: { id: true } })
         : null;
 
+    const dedupKey = dedupKeyFor({ level, category, action, deviceId: device?.id ?? null, metadata });
+
+    if (dedupKey) {
+        const open = await prisma.systemLog.findFirst({
+            where: { departmentId, dedupKey, acknowledgedAt: null },
+            orderBy: { timestamp: "desc" },
+            select: { id: true, metadata: true },
+        });
+
+        if (open) {
+            // The worker retries a failed delivery up to 3x with the same id. Folding
+            // moves the row out from under the upsert-on-id below, so the retry has to
+            // be recognised here instead: the id of the delivery last folded in is kept
+            // on the row for exactly this. (A retry that arrives after someone
+            // acknowledged the row does slip through as a new row - rare, and a
+            // duplicate alert is a better failure than a swallowed one.)
+            const lastEventId = (open.metadata as { lastEventId?: string } | null)?.lastEventId;
+            if (lastEventId !== id) {
+                await prisma.systemLog.update({
+                    where: { id: open.id },
+                    data: {
+                        occurrences: { increment: 1 },
+                        lastSeenAt: timestamp,
+                        // The newest reading is the interesting one - "still 8.9" beats
+                        // whatever the value was when the excursion started.
+                        message,
+                        metadata: {
+                            ...((metadata ?? {}) as Record<string, unknown>),
+                            lastEventId: id,
+                        } as Prisma.InputJsonValue,
+                    },
+                });
+            }
+
+            return NextResponse.json({ success: true, folded: true }, { status: 201 });
+        }
+    }
+
     await prisma.systemLog.upsert({
         where: { id },
         create: {
@@ -75,6 +114,7 @@ export async function POST(req: NextRequest) {
             departmentId,
             deviceId: device?.id ?? null,
             experimentId: experimentId ?? null,
+            dedupKey,
         },
         update: {},
     });

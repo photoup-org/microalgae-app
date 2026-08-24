@@ -166,7 +166,27 @@ model SystemLog {
   experimentId String?
   deviceId     String?
 
+  /// Incident lifecycle, added in app-gui migration
+  /// 20260824100000_system_log_incident_lifecycle.
+  ///
+  /// A log row is either history (INFO) or a *condition* someone has to look at
+  /// (WARN and above). Only the second kind carries a dedupKey: the edge re-raises
+  /// the same threshold breach every 60s, so a week-long excursion would otherwise
+  /// be ~10k identical rows. Ingest folds a repeat into the newest row with the
+  /// same key that nobody has acknowledged yet, bumping occurrences and lastSeenAt.
+  /// Acknowledging closes that row, so the next occurrence opens a fresh one.
+  ///
+  /// `timestamp` therefore means FIRST seen once a row has been folded into;
+  /// lastSeenAt is null until the second occurrence arrives.
+  dedupKey       String?
+  occurrences    Int       @default(1)
+  lastSeenAt     DateTime?
+  acknowledgedAt DateTime?
+  /// A display name, not a User id - matches CalibrationRecord.performedBy.
+  acknowledgedBy String?
+
   @@index([departmentId, timestamp(sort: Desc)])
+  @@index([departmentId, dedupKey, acknowledgedAt])
 }
 
 model CalibrationRecord {

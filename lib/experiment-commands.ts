@@ -1,5 +1,6 @@
 import "server-only";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
+import { DEFAULT_DB_INTERVAL_SECONDS } from "@/lib/experiment-defaults";
 
 /**
  * Publishes the command that opens the worker's in-memory buffer for a set of
@@ -16,7 +17,7 @@ import { publishMQTTMessage } from "@/lib/core/mqtt";
  * starting a run, the manual Resync button, and app/api/edge/resync (which the
  * worker calls itself after a restart).
  */
-export const DEFAULT_DB_INTERVAL_SECONDS = 60;
+export { DEFAULT_DB_INTERVAL_SECONDS } from "@/lib/experiment-defaults";
 
 export interface ExperimentDevice {
     serialNumber: string;

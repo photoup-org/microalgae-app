@@ -11,6 +11,7 @@ import { ExperimentElapsed } from "@/components/ExperimentElapsed";
 import { ExperimentActionsMenu } from "@/components/ExperimentActionsMenu";
 import { ReactorGauges } from "@/components/ReactorGauges";
 import { ReactorChart } from "@/components/ReactorChart";
+import { CarbonateChart } from "@/components/CarbonateChart";
 import { ValvePanel } from "@/components/ValvePanel";
 import { LogsCard } from "@/components/LogsCard";
 import { CalibrationTable } from "@/components/CalibrationTable";
@@ -108,7 +109,13 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
 
             <div className="space-y-8">
                 {deviceTelemetry.map(({ device, telemetry }) => {
-                    const config = (device.config ?? {}) as { sensors?: string[]; valveOpen?: boolean; control?: unknown };
+                    const config = (device.config ?? {}) as {
+                        sensors?: string[];
+                        valveOpen?: boolean;
+                        control?: unknown;
+                        // The seam a titrated alkalinity drops into - see lib/carbonate.ts.
+                        medium?: never;
+                    };
                     const sensors = config.sensors ?? [];
 
                     return (
@@ -129,6 +136,15 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                 live={experiment.status === "RUNNING"}
                                 experimentId={experiment.id}
                                 dbInterval={dbInterval}
+                            />
+
+                            {/* Derived from the telemetry already fetched above, so this
+                                costs no extra InfluxDB read. Renders nothing unless both
+                                pH and temperature are enabled on the device. */}
+                            <CarbonateChart
+                                telemetry={telemetry}
+                                enabledMetrics={sensors}
+                                medium={(config as { medium?: never }).medium}
                             />
 
                             <div className="grid gap-6 md:grid-cols-2">

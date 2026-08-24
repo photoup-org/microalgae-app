@@ -23,6 +23,20 @@ export interface MirrorResult {
  * everything, including deletes.
  */
 export async function refreshMirror(cloud: PrismaClient, local: PrismaClient): Promise<MirrorResult> {
+    // This function opens with deleteMany() on seven tables. Aimed at the
+    // authoritative database by a copy-paste in an env file, it would erase the
+    // production data it was meant to protect - so it refuses to run unless the two
+    // handles really are two different databases.
+    const [[cloudId], [localId]] = await Promise.all([
+        cloud.$queryRaw<{ id: string }[]>`SELECT current_setting('cluster_name', true) || current_database() || inet_server_addr()::text AS id`,
+        local.$queryRaw<{ id: string }[]>`SELECT current_setting('cluster_name', true) || current_database() || inet_server_addr()::text AS id`,
+    ]);
+    if (cloudId?.id && cloudId.id === localId?.id) {
+        throw new Error(
+            "refreshMirror was given the same database as both source and target. Refusing to run - this would delete the authoritative data."
+        );
+    }
+
     const [products, users, projects, devices, experiments, calibrations, logs] = await Promise.all([
         cloud.hardwareProduct.findMany(),
         cloud.user.findMany(),

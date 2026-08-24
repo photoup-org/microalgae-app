@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { isEdgeAuthorized } from "@/lib/core/edge-auth";
+import { isMirrorSyncAuthorized } from "@/lib/core/edge-auth";
 import { refreshMirror } from "@/lib/services/mirror";
 import { drain, pendingCount } from "@/lib/services/outbox";
 
@@ -20,11 +20,11 @@ import { drain, pendingCount } from "@/lib/services/outbox";
  * replica's rows back into the replica and mark them applied without the cloud ever
  * seeing them.
  *
- * Authenticated with EDGE_WEBHOOK_SECRET rather than a session: it is called by a
+ * Authenticated with MIRROR_SYNC_SECRET rather than a session: it is called by a
  * scheduler, not a person. Excluded from the proxy matcher for the same reason.
  */
 export async function POST(req: NextRequest) {
-    if (!isEdgeAuthorized(req.headers.get("authorization"))) {
+    if (!isMirrorSyncAuthorized(req.headers.get("authorization"))) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

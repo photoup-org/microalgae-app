@@ -15,6 +15,7 @@ import { getExperimentTelemetryAction } from "@/actions/experiments";
 import { useMqttStore } from "@/hooks/useMqttStore";
 import { REACTOR_SCHEMA, SchemaItem } from "@/lib/reactor-schema";
 import { SensorReading } from "@/lib/types";
+import { DEFAULT_DB_INTERVAL_SECONDS } from "@/lib/experiment-defaults";
 
 interface ReactorChartProps {
     /** Hardware id, which is how the live store keys devices. */
@@ -64,6 +65,12 @@ const MAX_POINTS = 1000;
 const LIVE_SUFFIX = "__live";
 /** Dots stop being readable past this many recorded points. */
 const MAX_DOTTED_POINTS = 150;
+/**
+ * Missed intervals before a gap is drawn as a break in the line rather than a
+ * join. Matches SilenceWatchdog.MISSED_BUCKETS on the edge, so the chart and the
+ * alert agree on what counts as "not reporting".
+ */
+const GAP_INTERVALS = 3;
 
 /**
  * All four channels on one time axis.
@@ -134,9 +141,9 @@ export function ReactorChart({
     const { rows, savedCount, hasLiveTail } = useMemo(
         () =>
             liveOnly
-                ? buildRows(liveSeries ?? [], [], shown)
-                : buildRows(recorded, liveSeries ?? [], shown),
-        [liveOnly, recorded, liveSeries, shown]
+                ? buildRows(liveSeries ?? [], [], shown, dbInterval)
+                : buildRows(recorded, liveSeries ?? [], shown, dbInterval),
+        [liveOnly, recorded, liveSeries, shown, dbInterval]
     );
 
     function toggle(key: string) {
@@ -307,7 +314,8 @@ function EmptyPlot() {
 function buildRows(
     historical: SensorReading[],
     live: SensorReading[],
-    metrics: SchemaItem[]
+    metrics: SchemaItem[],
+    dbInterval?: number
 ): { rows: WideRow[]; savedCount: number; hasLiveTail: boolean } {
     const wanted = new Set(metrics.map((m) => m.key));
     const byTime = new Map<number, WideRow>();
@@ -349,10 +357,44 @@ function buildRows(
         hasLiveTail = true;
     }
 
-    const rows = [...byTime.values()].sort((a, b) => a.time - b.time).slice(-MAX_POINTS);
+    const ordered = [...byTime.values()].sort((a, b) => a.time - b.time);
+    const rows = insertGapBreaks(ordered, dbInterval).slice(-MAX_POINTS);
     return {
         rows,
         savedCount: rows.filter((r) => savedTimes.has(r.time)).length,
         hasLiveTail,
     };
+}
+
+/**
+ * Breaks the line wherever the reactor stopped reporting.
+ *
+ * Without this a six-hour outage is invisible, and dangerously so. Rows exist
+ * only at timestamps that carry data, and the X axis is categorical, so the last
+ * reading before the gap and the first one after it land side by side and get
+ * joined by a straight line. A node that died overnight then looks exactly like a
+ * culture holding perfectly steady.
+ *
+ * The fix is a row carrying no metric values at all. Every <Line> sets
+ * connectNulls={false}, so a single empty row is enough to split the series -
+ * which is all that is available anyway, since a categorical axis cannot show a
+ * gap proportional to its real duration.
+ */
+function insertGapBreaks(ordered: WideRow[], dbInterval?: number): WideRow[] {
+    const expected = dbInterval ?? DEFAULT_DB_INTERVAL_SECONDS;
+    const threshold = expected * GAP_INTERVALS * 1000;
+    const withBreaks: WideRow[] = [];
+
+    for (const [index, row] of ordered.entries()) {
+        const previous = ordered[index - 1];
+        if (previous && row.time - previous.time > threshold) {
+            // Sits midway between the two real points, so a tooltip landing on it
+            // reports a time inside the gap rather than at either edge.
+            const time = previous.time + Math.floor((row.time - previous.time) / 2);
+            withBreaks.push({ time, label: format(time, "HH:mm:ss") });
+        }
+        withBreaks.push(row);
+    }
+
+    return withBreaks;
 }

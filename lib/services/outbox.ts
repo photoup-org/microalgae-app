@@ -24,8 +24,57 @@ export interface OutboxOperation {
 /** Only these operations may be queued. Anything else fails loudly instead. */
 const REPLAYABLE = new Set(["create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany"]);
 
+/**
+ * Models an entry may target. `drain` looks the delegate up by name on the client,
+ * so without this an `action` string could reach any property on it. Nothing can
+ * write these rows but this app, which makes it defence in depth rather than a
+ * control - but the cost is one array.
+ */
+const REPLAYABLE_MODELS = new Set([
+    "user",
+    "project",
+    "experiment",
+    "device",
+    "calibrationRecord",
+    "systemLog",
+    "pushSubscription",
+]);
+
 export function isReplayable(operation: string): boolean {
     return REPLAYABLE.has(operation);
+}
+
+/**
+ * Prisma's null sentinels do not survive a JSON round trip.
+ *
+ * `Prisma.JsonNull` and `Prisma.DbNull` both stringify to `{}`, so a queued write
+ * that meant "this JSON column is null" would replay as an empty object instead -
+ * silently, and only for rows written while offline. These two functions swap the
+ * sentinels for a marker on the way in and restore them on the way out.
+ */
+const NULL_MARKER = "__prismaNull";
+
+function encodeSentinels(value: unknown): unknown {
+    if (value === Prisma.JsonNull) return { [NULL_MARKER]: "JsonNull" };
+    if (value === Prisma.DbNull) return { [NULL_MARKER]: "DbNull" };
+    if (value === Prisma.AnyNull) return { [NULL_MARKER]: "AnyNull" };
+    if (Array.isArray(value)) return value.map(encodeSentinels);
+    if (value && typeof value === "object" && !(value instanceof Date)) {
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encodeSentinels(v)]));
+    }
+    return value;
+}
+
+function decodeSentinels(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(decodeSentinels);
+    if (value && typeof value === "object") {
+        const marker = (value as Record<string, unknown>)[NULL_MARKER];
+        if (marker === "JsonNull") return Prisma.JsonNull;
+        if (marker === "DbNull") return Prisma.DbNull;
+        if (marker === "AnyNull") return Prisma.AnyNull;
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, decodeSentinels(v)]));
+    }
+    return value;
 }
 
 /**
@@ -38,7 +87,7 @@ export async function enqueue(local: PrismaClient, op: OutboxOperation): Promise
     await local.outboxEntry.create({
         data: {
             action: `${op.model}.${op.operation}`,
-            payload: (op.args ?? {}) as Prisma.InputJsonValue,
+            payload: encodeSentinels(op.args ?? {}) as Prisma.InputJsonValue,
         },
     });
     console.warn(`[outbox] Queued ${op.model}.${op.operation} for replay.`);
@@ -79,14 +128,14 @@ export async function drain(local: PrismaClient, cloud: PrismaClient): Promise<D
         const [model, operation] = entry.action.split(".");
 
         try {
-            if (!model || !operation || !isReplayable(operation)) {
+            if (!model || !operation || !isReplayable(operation) || !REPLAYABLE_MODELS.has(model)) {
                 throw new Error(`Not replayable: ${entry.action}`);
             }
 
             const delegate = (cloud as unknown as Record<string, Record<string, (a: unknown) => unknown>>)[model];
             if (!delegate?.[operation]) throw new Error(`Unknown operation: ${entry.action}`);
 
-            await delegate[operation](entry.payload);
+            await delegate[operation](decodeSentinels(entry.payload));
             await local.outboxEntry.update({
                 where: { id: entry.id },
                 data: { appliedAt: new Date(), lastError: null },

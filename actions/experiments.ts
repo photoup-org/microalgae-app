@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ExperimentStatus, DeviceStatus, Prisma } from "@prisma/client";
+import { ExperimentStatus, DeviceStatus, LogCategory, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
 import { publishExperimentStart } from "@/lib/experiment-commands";
 import { requireUser } from "@/lib/core/auth/user";
+import { recordAudit } from "@/lib/services/audit";
 import { getDeviceTelemetry } from "@/lib/db/influx";
 import { experimentQueryWindow } from "@/lib/experiment-window";
 import type { SensorReading } from "@/lib/types";
@@ -284,8 +285,9 @@ export async function updateExperimentAction(experimentId: string, input: unknow
 }
 
 export async function deleteExperimentAction(experimentId: string): Promise<ActionResult> {
+    let user;
     try {
-        await requireUser();
+        user = await requireUser();
     } catch {
         return { success: false, error: "Não autenticado." };
     }
@@ -297,6 +299,17 @@ export async function deleteExperimentAction(experimentId: string): Promise<Acti
     if (experiment.status === ExperimentStatus.RUNNING || experiment.status === ExperimentStatus.PAUSED) {
         return { success: false, error: "Termine a experiência antes de a eliminar." };
     }
+
+    // Before the delete - see the note in deleteProjectAction. The experimentId is
+    // recorded in metadata rather than the column, which cascades away with the row.
+    await recordAudit({
+        action: "EXPERIMENT_DELETED",
+        message: `Experiência "${experiment.name}" eliminada por ${user.name || user.email}.`,
+        actor: user.name || user.email,
+        category: LogCategory.EXPERIMENT,
+        projectId: experiment.projectId,
+        metadata: { experimentId: experiment.id, experimentName: experiment.name, status: experiment.status },
+    });
 
     await prisma.experiment.delete({ where: { id: experimentId } });
     revalidatePath(`/projects/${experiment.projectId}`);

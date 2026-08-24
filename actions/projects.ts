@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/core/prisma";
 import { requireUser } from "@/lib/core/auth/user";
+import { recordAudit } from "@/lib/services/audit";
 import type { ActionResult } from "@/lib/action-result";
 
 const projectSchema = z.object({
@@ -126,8 +127,9 @@ export async function updateProjectAction(projectId: string, input: unknown): Pr
  * deletion, since deleting the project would orphan an active telemetry run.
  */
 export async function deleteProjectAction(projectId: string): Promise<ActionResult> {
+    let user;
     try {
-        await requireUser();
+        user = await requireUser();
     } catch {
         return { success: false, error: "Não autenticado." };
     }
@@ -141,6 +143,16 @@ export async function deleteProjectAction(projectId: string): Promise<ActionResu
     if (project.experiments.length > 0) {
         return { success: false, error: "Existem experiências em curso. Termine-as antes de eliminar o projeto." };
     }
+
+    // Written before the delete, not after: the row it describes is about to stop
+    // existing, and a log claiming a deletion that then failed would be worse than
+    // none at all.
+    await recordAudit({
+        action: "PROJECT_DELETED",
+        message: `Projeto "${project.name}" eliminado por ${user.name || user.email}.`,
+        actor: user.name || user.email,
+        metadata: { projectId: project.id, projectName: project.name },
+    });
 
     await prisma.project.delete({ where: { id: projectId } });
     revalidatePath("/projects");

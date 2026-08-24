@@ -53,8 +53,27 @@ export function localSessionTtlDays(): number {
  * cloud instance has no reason to accept an offline credential, and enabling it
  * there would expose one to the internet.
  */
+/**
+ * Anything shorter is not a key, and this token is the only thing standing between
+ * the local network and full reactor control. 32 characters is the length
+ * `openssl rand -hex 32` produces halved, so it accepts a real secret and rejects
+ * a typed-in phrase.
+ */
+const MIN_SECRET_LENGTH = 32;
+
 export function localSessionEnabled(): boolean {
-    return process.env.LOCAL_SESSION_ENABLED === "true" && Boolean(process.env.LOCAL_SESSION_SECRET);
+    if (process.env.LOCAL_SESSION_ENABLED !== "true") return false;
+
+    const secret = process.env.LOCAL_SESSION_SECRET;
+    if (!secret || secret.length < MIN_SECRET_LENGTH) {
+        // Fails closed and says why. Silently disabling would look like pairing
+        // being broken; silently accepting would be worse.
+        console.error(
+            `[local-session] LOCAL_SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters. Pairing is disabled.`
+        );
+        return false;
+    }
+    return true;
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {

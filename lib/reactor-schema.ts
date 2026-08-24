@@ -29,7 +29,11 @@ export const REACTOR_SCHEMA: SchemaItem[] = [
     { key: "ph", label: "pH", unit: "", min: 0, max: 14, color: "var(--metric-ph)", requires: ["temp"] },
     { key: "temp", label: "Temperatura", unit: "°C", min: 0, max: 50, color: "var(--metric-temp)", requires: [] },
     { key: "turbidity", label: "Turbidez", unit: "NTU", min: 0, max: 100, color: "var(--metric-turbidity)", requires: [] },
-    { key: "co2", label: "CO2", unit: "ppm", min: 0, max: 2000, color: "var(--metric-co2)", requires: ["temp"] },
+    // "gasoso" because this is the headspace gas sensor, and the carbonate chart
+    // derives a DISSOLVED CO2 series alongside it. `key` stays "co2" - it is an
+    // InfluxDB field name, a calibrationConfig key and a /sync payload property,
+    // and renaming it would orphan every recorded series.
+    { key: "co2", label: "CO₂ gasoso", unit: "ppm", min: 0, max: 2000, color: "var(--metric-co2)", requires: ["temp"] },
 ];
 
 /** Not a sensor channel: actuator state reported back in telemetry. */

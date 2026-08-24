@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/core/prisma";
 import { getDeviceTelemetry } from "@/lib/db/influx";
 import { experimentQueryWindow } from "@/lib/experiment-window";
@@ -51,12 +51,21 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
     const window = experimentQueryWindow(experiment);
     const deviceTelemetry = await Promise.all(
         experiment.devices.map(async (device) => {
-            if (!window) return { device, telemetry: [] as SensorReading[] };
+            if (!window) return { device, telemetry: [] as SensorReading[], readFailed: false };
             try {
-                return { device, telemetry: await getDeviceTelemetry(device.serialNumber, window.start, window.end) };
+                return {
+                    device,
+                    telemetry: await getDeviceTelemetry(device.serialNumber, window.start, window.end),
+                    readFailed: false,
+                };
             } catch (error) {
+                // Returning an empty series here used to be indistinguishable from a
+                // run that genuinely had no data yet, so an unreachable InfluxDB
+                // looked exactly like "nothing is being recorded" - and sent someone
+                // hunting a write bug that did not exist. The flag makes the
+                // difference visible.
                 console.error(`[experiment ${experimentId}] InfluxDB read failed for ${device.serialNumber}:`, error);
-                return { device, telemetry: [] as SensorReading[] };
+                return { device, telemetry: [] as SensorReading[], readFailed: true };
             }
         })
     );
@@ -108,7 +117,7 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
             </div>
 
             <div className="space-y-8">
-                {deviceTelemetry.map(({ device, telemetry }) => {
+                {deviceTelemetry.map(({ device, telemetry, readFailed }) => {
                     const config = (device.config ?? {}) as {
                         sensors?: string[];
                         valveOpen?: boolean;
@@ -126,6 +135,17 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                 <Link href={`/devices/${device.id}`} className="break-words hover:underline">{device.name}</Link>
                                 <span className="tabular text-xs font-normal break-all text-muted-foreground">{device.serialNumber}</span>
                             </h2>
+
+                            {readFailed && (
+                                <p className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+                                    <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                                    <span>
+                                        Não foi possível ler o histórico da base de dados de séries temporais. Os
+                                        gráficos abaixo mostram apenas leituras em direto — os dados gravados podem
+                                        existir e não estar acessíveis.
+                                    </span>
+                                </p>
+                            )}
 
                             <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} live={experiment.status === "RUNNING"} />
 

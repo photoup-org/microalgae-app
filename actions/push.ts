@@ -7,12 +7,54 @@ import { sendPushToDepartment } from "@/lib/services/push";
 import type { ActionResult } from "@/lib/action-result";
 
 /**
+ * The hosts a browser push endpoint is allowed to live on.
+ *
+ * Without this the endpoint is a server-side request forgery hole: it is a URL,
+ * supplied by whoever is signed in, that this server will later POST to on a
+ * schedule of the attacker's choosing. Pointed at 169.254.169.254 or an address
+ * inside the tailnet it becomes a probe of the network the app runs in - and one
+ * that survives in the database until someone notices it.
+ *
+ * An allowlist rather than a private-IP blocklist, because the set of legitimate
+ * values here is tiny and known: there are only a handful of push services in the
+ * world, and a subscription pointing anywhere else is not a subscription.
+ */
+const PUSH_HOSTS = [
+    "fcm.googleapis.com",
+    "android.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "web.push.apple.com",
+];
+const PUSH_HOST_SUFFIXES = [".push.services.mozilla.com", ".notify.windows.com"];
+
+function isAllowedPushEndpoint(raw: string): boolean {
+    let url: URL;
+    try {
+        url = new URL(raw);
+    } catch {
+        return false;
+    }
+
+    // https only: the payload is encrypted, but the endpoint itself identifies a
+    // device and must not travel in clear text.
+    if (url.protocol !== "https:") return false;
+    // A port or credentials in a push endpoint means someone is aiming it
+    // somewhere it does not belong.
+    if (url.port !== "" || url.username !== "" || url.password !== "") return false;
+
+    const host = url.hostname.toLowerCase();
+    return PUSH_HOSTS.includes(host) || PUSH_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+/**
  * Shape of a serialised browser PushSubscription. Validated rather than trusted:
  * these values are written straight into a table the notification sender reads,
  * and the endpoint is a URL this server will later make requests to.
  */
 const subscriptionSchema = z.object({
-    endpoint: z.string().url().max(1000),
+    endpoint: z.string().url().max(1000).refine(isAllowedPushEndpoint, {
+        message: "Endpoint de notificações não reconhecido.",
+    }),
     keys: z.object({
         p256dh: z.string().min(1).max(200),
         auth: z.string().min(1).max(200),

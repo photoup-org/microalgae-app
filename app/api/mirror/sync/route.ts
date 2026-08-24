@@ -37,6 +37,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "DATABASE_URL is not set." }, { status: 500 });
     }
 
+    // The realistic disaster is a copy-pasted env var. refreshMirror opens with
+    // deleteMany() on seven tables, so pointing both at the authoritative database
+    // would erase production. refreshMirror carries its own check against the live
+    // connections for the case where two different URLs reach one database; this
+    // one is deterministic and costs nothing.
+    if (cloudUrl === localUrl) {
+        console.error("[sync] DATABASE_URL and MIRROR_DATABASE_URL are identical. Refusing to run.");
+        return NextResponse.json(
+            { error: "DATABASE_URL and MIRROR_DATABASE_URL point at the same database." },
+            { status: 500 }
+        );
+    }
+
     const cloud = new PrismaClient({ datasources: { db: { url: cloudUrl } } });
     const local = new PrismaClient({ datasources: { db: { url: localUrl } } });
 

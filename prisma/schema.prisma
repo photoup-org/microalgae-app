@@ -215,6 +215,37 @@ model MirrorSync {
   rowCounts    Json?
 }
 
+/// A write that was made on the LAN instance while the cloud was unreachable.
+///
+/// Lives ONLY in the Pi's local replica - the authoritative Neon database never
+/// has rows here, even though the table exists in both (one schema builds both).
+///
+/// Replay is safe because the cloud cannot move a reactor's state while the Pi is
+/// away: updateExperimentLifecycleAction and setValveAction both publish to the
+/// edge first and refuse if it does not answer. So a queued entry has nothing to
+/// race against. Pure metadata edits (renaming a project) are the exception and
+/// resolve last-write-wins.
+///
+/// Entries are applied to the replica immediately so the UI reflects them, then
+/// drained to the cloud on reconnect. A replica refresh MUST NOT run while any
+/// entry is pending - refreshMirror is a full delete-and-insert and would discard
+/// the local rows the entry represents.
+model OutboxEntry {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  /// Names the server action to replay, e.g. "experiment.lifecycle".
+  action    String
+  /// Arguments for that action, as sent originally.
+  payload   Json
+  /// Set once the cloud has accepted it. Kept, not deleted, so a drain that fails
+  /// halfway cannot double-apply the entries it already pushed.
+  appliedAt DateTime?
+  /// Last replay failure, for the operator. A stuck entry must be visible.
+  lastError String?
+
+  @@index([appliedAt, createdAt])
+}
+
 model PushSubscription {
   id           String    @id @default(cuid())
   departmentId String

@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from "@prisma/client";
+import { enqueue, isReplayable } from "@/lib/services/outbox";
 
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
@@ -7,8 +8,8 @@ const globalForPrisma = globalThis as unknown as {
 
 /**
  * Errors that mean "this database is not answering", as opposed to "this query is
- * wrong". Only these justify falling back to the mirror - a constraint violation
- * or a bad query must surface, not be retried somewhere else.
+ * wrong". Only these justify falling back to the replica - a constraint violation
+ * or a bad query must surface, not be queued and retried somewhere else.
  *
  * P1001 unreachable, P1002 timed out, P1008 operation timed out,
  * P1017 server closed the connection.
@@ -42,11 +43,11 @@ function createClient(url?: string): PrismaClient {
 }
 
 /**
- * The read-only copy the cloud instance falls back to when the Pi is unreachable.
+ * The LAN instance's local replica of the authoritative cloud database.
  *
- * Null unless MIRROR_DATABASE_URL is set, which is how the whole feature stays off
- * for the LAN instance - it IS the primary, so a fallback there would be a copy of
- * itself.
+ * Null unless MIRROR_DATABASE_URL is set, which is how the feature stays off on
+ * the cloud instance - Neon is reachable from Vercel by definition, and a replica
+ * there would answer for an outage that cannot happen.
  */
 const mirror: PrismaClient | null = process.env.MIRROR_DATABASE_URL
     ? (globalForPrisma.mirrorPrisma ?? createClient(process.env.MIRROR_DATABASE_URL))
@@ -62,7 +63,7 @@ const mirror: PrismaClient | null = process.env.MIRROR_DATABASE_URL
  */
 let lastFallbackAt = 0;
 
-/** Whether a query fell back to the mirror within the given window. */
+/** Whether a query fell back to the replica within the given window. */
 export function recentlyDegraded(withinMs = 60_000): boolean {
     return lastFallbackAt > 0 && Date.now() - lastFallbackAt < withinMs;
 }
@@ -72,16 +73,21 @@ export function mirrorClient(): PrismaClient | null {
 }
 
 /**
- * The primary client, extended so an unreachable primary transparently reads from
- * the mirror.
+ * The cloud client, extended so an unreachable cloud keeps the LAN console working.
  *
  * Done as an extension rather than at each call site because there are dozens of
  * call sites and one of them being forgotten is exactly the bug this is meant to
  * prevent - a page that throws while its neighbour degrades gracefully.
  *
- * Writes are NOT redirected. A mutation against the mirror would be silently lost
- * on the next sync, and worse, would report success for a valve command that never
- * reached the reactor. It throws instead, and the UI surfaces the error.
+ * Reads are served from the replica. Writes are queued in the outbox AND applied
+ * to the replica, so the UI reflects them immediately and the cloud receives them
+ * on reconnect.
+ *
+ * Queueing a write is only safe because the reactor has already been told by the
+ * time we get here: setValveAction and updateExperimentLifecycleAction both
+ * publish over MQTT to the local broker first - which works offline - and only
+ * then touch the database. The queued row is the record of a command that already
+ * happened, not a promise to issue one later.
  */
 const basePrisma = globalForPrisma.prisma ?? createClient();
 
@@ -95,22 +101,31 @@ export const prisma = (
                       } catch (error) {
                           if (!isUnreachable(error) || !model) throw error;
 
+                          lastFallbackAt = Date.now();
+
+                          // The extension has no typed handle on the replica's
+                          // delegates, so this indexes them by name. Shapes match
+                          // because both databases are built from the same schema.
+                          const key = model.charAt(0).toLowerCase() + model.slice(1);
+                          const delegate = (mirror as unknown as Record<string, Record<string, (a: unknown) => unknown>>)[key];
+
                           if (WRITE_OPERATIONS.has(operation)) {
-                              throw new Error(
-                                  "O servidor local está inacessível, por isso não é possível guardar alterações. " +
-                                      "Os dados mostrados são uma cópia."
-                              );
+                              if (!isReplayable(operation)) {
+                                  // Raw writes carry SQL we cannot re-dispatch by
+                                  // model and operation on reconnect.
+                                  throw new Error(
+                                      "Sem ligação à nuvem: esta operação não pode ser guardada localmente."
+                                  );
+                              }
+
+                              await enqueue(mirror, { model: key, operation, args });
+                              console.warn(`[db] Cloud unreachable; ${key}.${operation} queued and applied locally.`);
+                              // Apply to the replica too, or the UI would show the
+                              // change as having failed until the link returns.
+                              return delegate[operation](args);
                           }
 
-                          lastFallbackAt = Date.now();
-                          console.warn(`[db] Primary unreachable; serving ${model}.${operation} from the mirror.`);
-
-                          // The extension has no typed handle on the mirror's delegates,
-                          // so this indexes them by name. Shapes match because both
-                          // databases are built from the same schema.
-                          const delegate = (mirror as unknown as Record<string, Record<string, (a: unknown) => unknown>>)[
-                              model.charAt(0).toLowerCase() + model.slice(1)
-                          ];
+                          console.warn(`[db] Cloud unreachable; serving ${key}.${operation} from the replica.`);
                           return delegate[operation](args);
                       }
                   },

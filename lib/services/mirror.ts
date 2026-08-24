@@ -7,55 +7,59 @@ export interface MirrorResult {
 }
 
 /**
- * Refreshes the read-only cloud mirror from the Pi's database.
+ * Refreshes the LAN instance's local replica from the authoritative cloud
+ * database.
+ *
+ * Direction matters and is easy to get backwards: the cloud (Neon) is the single
+ * writer, and the Pi's Postgres is a read-only copy that exists so the LAN console
+ * keeps rendering when the internet is down. Nothing here ever writes toward the
+ * cloud - that is the outbox's job, and it must drain BEFORE this runs (see the
+ * guard in the caller), because a refresh is a full delete-and-insert and would
+ * otherwise discard pending offline writes.
  *
  * A full copy, not a diff. At this scale (tens of projects, thousands of logs) a
  * changed-since query plus tombstone handling would be more machinery than the
  * whole table is worth, and a full copy cannot drift - every run reconciles
  * everything, including deletes.
- *
- * The Pi is the only writer, always. Nothing here ever writes back, which is what
- * makes this safe where bidirectional sync would not be: there is no second writer
- * to conflict with, so no merge policy to get wrong.
  */
-export async function refreshMirror(primary: PrismaClient, mirror: PrismaClient): Promise<MirrorResult> {
+export async function refreshMirror(cloud: PrismaClient, local: PrismaClient): Promise<MirrorResult> {
     const [products, users, projects, devices, experiments, calibrations, logs] = await Promise.all([
-        primary.hardwareProduct.findMany(),
-        primary.user.findMany(),
-        primary.project.findMany({ include: { devices: { select: { id: true } } } }),
-        primary.device.findMany(),
-        primary.experiment.findMany({ include: { devices: { select: { id: true } } } }),
-        primary.calibrationRecord.findMany(),
-        // Logs are the one unbounded table. The mirror exists so someone can check
-        // what happened while the Pi is down, and that means recent history - a
-        // year of rows would make every sync slower for no added answer.
-        primary.systemLog.findMany({ orderBy: { timestamp: "desc" }, take: 2000 }),
+        cloud.hardwareProduct.findMany(),
+        cloud.user.findMany(),
+        cloud.project.findMany({ include: { devices: { select: { id: true } } } }),
+        cloud.device.findMany(),
+        cloud.experiment.findMany({ include: { devices: { select: { id: true } } } }),
+        cloud.calibrationRecord.findMany(),
+        // Logs are the one unbounded table. The replica exists so someone at the
+        // reactor can see recent history while the link is down - a year of rows
+        // would make every sync slower for no added answer.
+        cloud.systemLog.findMany({ orderBy: { timestamp: "desc" }, take: 2000 }),
     ]);
 
-    // Replace wholesale inside one transaction: readers of the mirror either see
+    // Replace wholesale inside one transaction: readers of the replica either see
     // the previous complete copy or the new one, never a half-written mixture.
     // Delete order is the reverse of insert order, so no foreign key is ever left
     // dangling mid-transaction.
-    await mirror.$transaction([
-        mirror.systemLog.deleteMany(),
-        mirror.calibrationRecord.deleteMany(),
-        mirror.experiment.deleteMany(),
-        mirror.project.deleteMany(),
-        mirror.device.deleteMany(),
-        mirror.user.deleteMany(),
-        mirror.hardwareProduct.deleteMany(),
+    await local.$transaction([
+        local.systemLog.deleteMany(),
+        local.calibrationRecord.deleteMany(),
+        local.experiment.deleteMany(),
+        local.project.deleteMany(),
+        local.device.deleteMany(),
+        local.user.deleteMany(),
+        local.hardwareProduct.deleteMany(),
 
-        mirror.hardwareProduct.createMany({ data: products }),
-        mirror.user.createMany({ data: users }),
-        mirror.project.createMany({
+        local.hardwareProduct.createMany({ data: products }),
+        local.user.createMany({ data: users }),
+        local.project.createMany({
             data: projects.map(({ devices: _d, ...project }) => project) as Prisma.ProjectCreateManyInput[],
         }),
-        mirror.device.createMany({ data: devices as Prisma.DeviceCreateManyInput[] }),
-        mirror.experiment.createMany({
+        local.device.createMany({ data: devices as Prisma.DeviceCreateManyInput[] }),
+        local.experiment.createMany({
             data: experiments.map(({ devices: _d, ...experiment }) => experiment) as Prisma.ExperimentCreateManyInput[],
         }),
-        mirror.calibrationRecord.createMany({ data: calibrations as Prisma.CalibrationRecordCreateManyInput[] }),
-        mirror.systemLog.createMany({ data: logs as Prisma.SystemLogCreateManyInput[] }),
+        local.calibrationRecord.createMany({ data: calibrations as Prisma.CalibrationRecordCreateManyInput[] }),
+        local.systemLog.createMany({ data: logs as Prisma.SystemLogCreateManyInput[] }),
     ]);
 
     // The implicit many-to-many join tables cannot be written by createMany, so
@@ -63,14 +67,14 @@ export async function refreshMirror(primary: PrismaClient, mirror: PrismaClient)
     // because connect() needs the rows committed.
     for (const project of projects) {
         if (project.devices.length === 0) continue;
-        await mirror.project.update({
+        await local.project.update({
             where: { id: project.id },
             data: { devices: { connect: project.devices.map((d) => ({ id: d.id })) } },
         });
     }
     for (const experiment of experiments) {
         if (experiment.devices.length === 0) continue;
-        await mirror.experiment.update({
+        await local.experiment.update({
             where: { id: experiment.id },
             data: { devices: { connect: experiment.devices.map((d) => ({ id: d.id })) } },
         });
@@ -87,7 +91,7 @@ export async function refreshMirror(primary: PrismaClient, mirror: PrismaClient)
         systemLog: logs.length,
     };
 
-    await mirror.mirrorSync.upsert({
+    await local.mirrorSync.upsert({
         where: { id: "singleton" },
         create: { id: "singleton", syncedAt, rowCounts },
         update: { syncedAt, rowCounts },
@@ -96,10 +100,10 @@ export async function refreshMirror(primary: PrismaClient, mirror: PrismaClient)
     return { syncedAt, rowCounts };
 }
 
-/** When the mirror was last refreshed, or null if it never has been. */
-export async function mirrorSyncedAt(mirror: PrismaClient): Promise<Date | null> {
+/** When the local replica was last refreshed, or null if it never has been. */
+export async function mirrorSyncedAt(local: PrismaClient): Promise<Date | null> {
     try {
-        const row = await mirror.mirrorSync.findUnique({ where: { id: "singleton" } });
+        const row = await local.mirrorSync.findUnique({ where: { id: "singleton" } });
         return row?.syncedAt ?? null;
     } catch (error) {
         console.error("[mirror] Could not read the sync marker:", error);

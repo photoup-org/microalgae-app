@@ -2,19 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { isEdgeAuthorized } from "@/lib/core/edge-auth";
 import { refreshMirror } from "@/lib/services/mirror";
+import { drain, pendingCount } from "@/lib/services/outbox";
 
 /**
- * Refreshes the read-only cloud mirror. Meant to be called on a schedule.
+ * Reconciles the LAN instance with the cloud. Meant to be called on a schedule
+ * from the Pi.
  *
- * A pull, not a push: the cloud instance is the side with reliable uptime, and it
- * already holds a connection to the Pi's database over the tailnet. Having the Pi
- * push would mean giving it a schedule of its own and credentials it does not
- * otherwise need.
+ * Order is the whole point and must not be swapped: drain the outbox first, then
+ * refresh the replica. `refreshMirror` is a full delete-and-insert, so refreshing
+ * with entries still pending would erase the local rows those entries describe and
+ * replace them with cloud rows that have never heard of them — losing exactly the
+ * offline work this machinery exists to protect. If the drain does not finish, the
+ * refresh is skipped entirely rather than run on a partial result.
  *
  * Deliberately does NOT use the shared `prisma` export. That one falls back to the
- * mirror when the primary is unreachable, which here would mean copying the mirror
- * onto itself and stamping it with a fresh timestamp - presenting stale data as
- * newly synced. This needs the real primary or nothing.
+ * replica when the cloud is unreachable, so a drain through it would push the
+ * replica's rows back into the replica and mark them applied without the cloud ever
+ * seeing them.
  *
  * Authenticated with EDGE_WEBHOOK_SECRET rather than a session: it is called by a
  * scheduler, not a person. Excluded from the proxy matcher for the same reason.
@@ -24,29 +28,40 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const mirrorUrl = process.env.MIRROR_DATABASE_URL;
-    if (!mirrorUrl) {
+    const localUrl = process.env.MIRROR_DATABASE_URL;
+    if (!localUrl) {
         return NextResponse.json({ error: "MIRROR_DATABASE_URL is not set." }, { status: 501 });
     }
-    const primaryUrl = process.env.DATABASE_URL;
-    if (!primaryUrl) {
+    const cloudUrl = process.env.DATABASE_URL;
+    if (!cloudUrl) {
         return NextResponse.json({ error: "DATABASE_URL is not set." }, { status: 500 });
     }
 
-    const primary = new PrismaClient({ datasources: { db: { url: primaryUrl } } });
-    const mirror = new PrismaClient({ datasources: { db: { url: mirrorUrl } } });
+    const cloud = new PrismaClient({ datasources: { db: { url: cloudUrl } } });
+    const local = new PrismaClient({ datasources: { db: { url: localUrl } } });
 
     try {
-        const result = await refreshMirror(primary, mirror);
-        console.log(`[mirror] Refreshed at ${result.syncedAt.toISOString()}:`, result.rowCounts);
-        return NextResponse.json({ success: true, ...result });
+        const drainResult = await drain(local, cloud);
+        const stillPending = await pendingCount(local);
+
+        if (stillPending > 0) {
+            console.error(`[sync] ${stillPending} entry(ies) still pending; skipping the replica refresh.`);
+            return NextResponse.json(
+                { success: false, ...drainResult, pending: stillPending, refreshed: false },
+                { status: 409 }
+            );
+        }
+
+        const refresh = await refreshMirror(cloud, local);
+        console.log(`[sync] Drained ${drainResult.drained}, refreshed at ${refresh.syncedAt.toISOString()}.`);
+        return NextResponse.json({ success: true, ...drainResult, refreshed: true, ...refresh });
     } catch (error) {
-        // The expected failure is the Pi being unreachable, which is not an
-        // incident - it is the exact situation the mirror exists for. The previous
-        // copy stays in place, with its previous (honest) timestamp.
-        console.error("[mirror] Refresh failed:", error);
-        return NextResponse.json({ error: "Mirror refresh failed." }, { status: 502 });
+        // The expected failure is the cloud being unreachable, which is not an
+        // incident - it is the situation all of this exists for. The replica and
+        // the outbox both stay exactly as they were.
+        console.error("[sync] Failed:", error);
+        return NextResponse.json({ error: "Sync failed." }, { status: 502 });
     } finally {
-        await Promise.all([primary.$disconnect(), mirror.$disconnect()]);
+        await Promise.all([cloud.$disconnect(), local.$disconnect()]);
     }
 }

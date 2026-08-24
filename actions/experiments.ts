@@ -158,8 +158,18 @@ export async function updateExperimentLifecycleAction(
         data.lastRunAt = null;
     }
 
-    await prisma.experiment.update({ where: { id: experimentId }, data });
-
+    // Tell the edge FIRST, and only record the new status if it accepted.
+    //
+    // This used to be the other way round, with a publish failure merely logged.
+    // That produced a RUNNING experiment the worker had never heard of: the live
+    // MQTT fan-out kept working, so the UI looked healthy while nothing at all was
+    // being written to InfluxDB (the flush is experiment-scoped - see CLAUDE.md).
+    //
+    // It is also what makes offline safe. With the edge unreachable this action
+    // now refuses, so the cloud cannot move a reactor's state while the Pi is
+    // away - which is precisely why an offline write queued on the LAN instance
+    // has nothing to race against when it replays. setValveAction already ordered
+    // itself this way.
     try {
         if (newStatus === ExperimentStatus.RUNNING) {
             const settings = (experiment.settings ?? {}) as { devices?: Record<string, Record<string, number>>; dbInterval?: number };
@@ -168,8 +178,11 @@ export async function updateExperimentLifecycleAction(
             await publishMQTTMessage(`cmd/experiments/${experimentId}/flush`, {});
         }
     } catch (error) {
-        console.error(`[experimentLifecycle] Status updated but the edge was not notified for ${experimentId}:`, error);
+        console.error(`[experimentLifecycle] Edge unreachable for ${experimentId}; status unchanged:`, error);
+        return { success: false, error: "Não foi possível contactar o servidor local. O estado não foi alterado." };
     }
+
+    await prisma.experiment.update({ where: { id: experimentId }, data });
 
     revalidatePath(`/projects/${experiment.projectId}`);
     revalidatePath(`/projects/${experiment.projectId}/experiments/${experimentId}`);

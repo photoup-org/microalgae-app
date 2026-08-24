@@ -1,13 +1,12 @@
 # This app owns its schema
 
-`schema.prisma` here is the single owner of **this app's own database**, which runs
-on the Pi. `prisma migrate` runs from this repo.
+`schema.prisma` here is the single owner of **this app's own database**, a Neon
+instance separate from `app-gui`'s. `prisma migrate` runs from this repo.
 
 This used to be a read-only mirror of `app-gui/prisma/schema.prisma`, with both
-apps pointing at one Neon instance. That ended when the reactor database moved onto
-the Pi: the Pi is not publicly reachable, so a shared database would have taken
-`app-gui` down with it. The two are now separate — `app-gui` keeps Neon and its own
-schema, and nothing in this repo touches it.
+apps sharing one database. Splitting them removed the hand-maintained drift that
+`prisma migrate` could not see. `app-gui` keeps `neondb` and its own schema, and
+nothing in this repo touches it.
 
 ## Rules
 
@@ -16,40 +15,50 @@ schema, and nothing in this repo touches it.
    split.
 2. `app-gui` is no longer upstream. Do not re-sync anything from it, and do not
    assume a column exists here because it exists there.
-3. The Pi is the primary. The cloud instance reads the same database over the
-   tailnet, so a migration applied from a laptop applies to production — there is no
-   separate staging database.
-4. **Check `DATABASE_URL` before migrating.** Until the cutover is finished, a
-   `.env` left pointing at the old Neon instance would run `0_init` against
-   `app-gui`'s database. It would fail on the first existing table rather than do
-   damage, but it has no business being attempted.
+3. The cloud database is the primary and the only writer. A migration applied from
+   a laptop applies to production — there is no separate staging database.
+4. **Apply every migration to the Pi's replica too.** It is built from this same
+   schema, and a replica missing a column fails only once the cloud goes down —
+   which is the worst possible moment to discover it.
 
 ## Moving the data
 
-`scripts/copy-department.ts` copies one department out of the old shared Neon
-database into a fresh one here, preserving ids (they appear in InfluxDB tags and in
-the edge worker's device map, so regenerating them would orphan every existing
-series). Run it once, after `migrate:deploy` has created the tables:
+`scripts/copy-department.ts` copies one department out of the old shared database
+into a fresh one, preserving ids (they appear in InfluxDB tags and in the edge
+worker's device map, so regenerating them would orphan every existing series). Run
+it once, after `migrate:deploy` has created the tables:
 
 ```
-SOURCE_DATABASE_URL=<neon> TARGET_DATABASE_URL=<pi> DEPARTMENT_ID=<id> npm run copy-department
+SOURCE_DATABASE_URL=<old shared> TARGET_DATABASE_URL=<new> DEPARTMENT_ID=<id> npm run copy-department
 ```
 
-## The read-only cloud mirror
+## The Pi's local replica, and offline writes
 
-The Pi being primary means the cloud console dies with the Pi. `MIRROR_DATABASE_URL`
-(cloud instance only) softens that: a second database holds a full copy, refreshed
-by POSTing to `/api/mirror/sync` on a schedule.
+The cloud is the single writer, so the LAN console on the Pi would normally die
+with the internet. `MIRROR_DATABASE_URL` (**LAN instance only**) points at a
+Postgres on the Pi holding a full copy, refreshed by POSTing to `/api/mirror/sync`
+on a schedule.
 
-Reads fail over to it automatically — `lib/core/prisma.ts` extends the client so an
-unreachable primary retries the same query against the mirror. **Writes never fail
-over.** A mutation against a copy would be discarded on the next sync, and a valve
-command would report success without reaching the reactor, so writes throw instead.
-`MirrorBanner` states how old the copy is, because a silent stand-in is worse than
-an error page.
+`lib/core/prisma.ts` extends the client so an unreachable cloud is handled without
+any call site knowing:
 
-The mirror is never written to except by the sync. That is what keeps this safe
-where bidirectional sync would not be: one writer, so no merge policy to get wrong.
+- **Reads** are served from the replica.
+- **Writes** are queued in `OutboxEntry` *and* applied to the replica, so the UI
+  reflects them immediately.
+
+Queueing a write is safe only because the reactor has already been told by the time
+we get there: `setValveAction` and `updateExperimentLifecycleAction` publish over
+MQTT to the *local* broker first — which works offline — and touch the database
+afterwards. The queued row records a command that already happened.
+
+Replay is conflict-free because both of those actions refuse when the edge does not
+answer, so the cloud cannot move a reactor's state while the Pi is away. Pure
+metadata edits (renaming a project) are the exception, and resolve last-write-wins.
+
+**Order matters in `/api/mirror/sync`: drain the outbox, then refresh.**
+`refreshMirror` is a full delete-and-insert; refreshing with entries pending would
+erase exactly the offline work this exists to protect. The route refuses to refresh
+while anything is unapplied.
 
 ## What this schema carries, and what it never did
 

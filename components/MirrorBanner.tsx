@@ -13,16 +13,16 @@ function ageLabel(syncedAt: Date): string {
 }
 
 /**
- * Says when the page is showing a copy rather than live data.
+ * Says when the page is running on the local replica instead of the cloud.
  *
- * This is the whole justification for the mirror being acceptable. A read-only
- * copy silently standing in for the primary would be worse than an error page:
- * someone would read a gauge, a valve state or an experiment status that stopped
- * being true hours ago and act on it. Stating the age turns a lie into a
- * qualified answer.
+ * Two things need saying at once, and both matter. The data is a copy of a known
+ * age - someone must not read an experiment status that stopped being true hours
+ * ago and act on it. And changes made now are queued, not saved: they are real
+ * (the reactor was commanded over the local broker) but the cloud has not seen
+ * them yet, so a second person looking at the cloud console will not.
  *
- * Renders nothing on the LAN instance, which has no mirror configured, and nothing
- * when the primary is answering.
+ * Renders nothing on the cloud instance, which has no replica configured, and
+ * nothing while the cloud is answering.
  */
 export async function MirrorBanner() {
     const mirror = mirrorClient();
@@ -36,10 +36,11 @@ export async function MirrorBanner() {
             className="flex items-center justify-center gap-2 bg-danger/15 px-4 py-1.5 text-xs text-danger"
         >
             <DatabaseZap className="size-3.5 shrink-0" aria-hidden />
-            {/* Names the cause, not just the symptom: "servidor local inacessível"
-                tells someone to go look at the Pi, where "erro de ligação" does not. */}
-            Servidor local inacessível. A mostrar uma cópia
-            {syncedAt ? ` de ${ageLabel(syncedAt)}` : ""}. Não é possível guardar alterações.
+            {/* Names the cause, not just the symptom: "sem ligação à nuvem" tells
+                someone to check the internet, where "erro de ligação" does not. */}
+            Sem ligação à nuvem. A trabalhar sobre uma cópia
+            {syncedAt ? ` de ${ageLabel(syncedAt)}` : ""}. As alterações são guardadas
+            localmente e enviadas quando a ligação voltar.
         </div>
     );
 }

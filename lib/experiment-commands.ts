@@ -22,6 +22,12 @@ export { DEFAULT_DB_INTERVAL_SECONDS } from "@/lib/experiment-defaults";
 export interface ExperimentDevice {
     serialNumber: string;
     name: string | null;
+    /**
+     * The transform that turns this device's raw channels into real units. Shape
+     * is `{ [metric]: { m, b } | { segments: [...] } }` - exactly what
+     * device_buffer.add_reading expects to find keyed by db_id.
+     */
+    calibrationConfig?: unknown;
 }
 
 export interface ExperimentSettings {
@@ -51,6 +57,20 @@ export async function publishExperimentStart(
     const deviceLabels = Object.fromEntries(
         devices.map((d) => [d.serialNumber, d.name ?? d.serialNumber])
     );
+    // Without this the worker has no calibration at all and stores every channel
+    // RAW - the pH electrode's volts land in InfluxDB under the field name "ph".
+    // It used to be omitted entirely, and the worker's only other source
+    // (cmd/devices/+/config) is in-memory, so a restart silently dropped it and
+    // nothing said so: charts, threshold alerts and the automatic dosing decision
+    // all carried on against electrode voltage.
+    //
+    // Keyed by serialNumber to match deviceMap's db_id, like every other map here.
+    const deviceConfigs = Object.fromEntries(
+        devices
+            .filter((d) => d.calibrationConfig)
+            .map((d) => [d.serialNumber, d.calibrationConfig])
+    );
+
     await publishMQTTMessage(`cmd/experiments/${experimentId}/start`, {
         storageFrequency: dbInterval,
         aggregationStrategy: "AVG",
@@ -63,6 +83,7 @@ export async function publishExperimentStart(
         // `devices` here is what the edge worker's threshold-breach check reads
         // (device_buffer.py: `{metric}Min`/`{metric}Max` per serialNumber) - without
         // it the check silently no-ops, since an empty dict has no keys to breach.
+        deviceConfigs,
         settings: { liveInterval: 1, dbInterval, devices: deviceLimits ?? {} },
     });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/core/auth/auth0";
 import { getAppSession } from "@/lib/core/auth/session";
+import { LOCAL_SESSION_COOKIE, verifyLocalSession } from "@/lib/core/auth/local-session";
 
 const AUTH_ROUTES_PREFIX = "/auth";
 
@@ -51,6 +52,14 @@ export default async function proxy(request: NextRequest) {
     }
 
     if (!session) {
+        // No Auth0 session. On the LAN instance a paired device is still signed in,
+        // and this is the branch that keeps it working with the internet down -
+        // redirecting to Auth0 there would be a redirect to a host that cannot
+        // answer. Disabled unless LOCAL_SESSION_ENABLED is set, so the cloud
+        // instance never accepts an offline credential.
+        const paired = await verifyLocalSession(request.cookies.get(LOCAL_SESSION_COOKIE)?.value);
+        if (paired) return NextResponse.next();
+
         const loginUrl = new URL(`${AUTH_ROUTES_PREFIX}/login`, request.url);
         loginUrl.searchParams.set("returnTo", pathname);
         return NextResponse.redirect(loginUrl);
@@ -69,7 +78,13 @@ export const config = {
          * the matcher they would be redirected to /auth/login, so the worker would
          * see a redirect instead of its endpoint and retry into its dead-letter
          * queue. They authenticate themselves against EDGE_WEBHOOK_SECRET instead.
+         *
+         * manifest.webmanifest and the PWA icons are excluded for a similar reason:
+         * the browser fetches them while deciding whether the app is installable,
+         * and a 307 to the login page fails that check outright - no install
+         * prompt, and therefore no push on iOS, which only allows it for an
+         * installed app. They expose nothing but the app's name and logo.
          */
-        "/((?!api/webhooks|api/telemetry|api/system-logs|api/edge|_next/static|_next/image|favicon.ico).*)",
+        "/((?!api/webhooks|api/telemetry|api/system-logs|api/edge|manifest.webmanifest|icon-|badge-|_next/static|_next/image|favicon.ico).*)",
     ],
 };

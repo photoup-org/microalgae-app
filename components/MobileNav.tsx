@@ -8,7 +8,7 @@ import { SidebarBrand, SidebarNavItems } from "@/components/SidebarNav";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { SidebarUserMenu } from "@/components/SidebarUserMenu";
 
-export function MobileNav({ user }: { user: { name: string | null; email: string } }) {
+export function MobileNav({ user }: { user: { name: string | null; email: string; paired: boolean | null } }) {
     const [open, setOpen] = useState(false);
 
     return (

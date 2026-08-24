@@ -189,6 +189,31 @@ model SystemLog {
   @@index([departmentId, dedupKey, acknowledgedAt])
 }
 
+/// A browser push endpoint, one row per device someone has opted in on.
+///
+/// Mirrored from app-gui migration 20260824120000_push_subscription, but this app
+/// is the only one that reads or writes it - app-gui has no push feature. No
+/// relation() to Department or User there either, so there is nothing to mirror
+/// here beyond the scalars.
+///
+/// Rows are disposable: a 404 or 410 from the push service means the browser threw
+/// the subscription away, and lib/services/push.ts deletes the row when it sees one.
+model PushSubscription {
+  id           String    @id @default(cuid())
+  departmentId String
+  userId       String?
+  /// Unique, so re-subscribing the same browser updates its row instead of
+  /// accumulating duplicates that would all fire at once.
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([departmentId])
+}
+
 model CalibrationRecord {
   id            String    @id @default(cuid())
   deviceId      String

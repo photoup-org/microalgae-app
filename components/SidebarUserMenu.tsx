@@ -10,9 +10,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PushToggle } from "@/components/PushToggle";
+import { PairDeviceMenuItem } from "@/components/PairDeviceMenuItem";
 
 interface SidebarUserMenuProps {
-    user: { name: string | null; email: string };
+    /** `paired` is null where pairing does not apply - see PairDeviceMenuItem. */
+    user: { name: string | null; email: string; paired: boolean | null };
     collapsed?: boolean;
 }
 
@@ -57,6 +60,8 @@ export function SidebarUserMenu({ user, collapsed }: SidebarUserMenuProps) {
                     {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
                     {theme === "dark" ? "Modo claro" : "Modo escuro"}
                 </DropdownMenuItem>
+                <PushToggle />
+                {user.paired !== null && <PairDeviceMenuItem paired={user.paired} />}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild variant="destructive">
                     <a href="/auth/logout" className="flex items-center gap-2">

@@ -7,7 +7,10 @@
     "build": "npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "check:schema": "tsx scripts/check-schema-sync.ts"
+    "check:schema": "tsx scripts/check-schema-sync.ts",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "copy-department": "tsx scripts/copy-department.ts"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.27.0",
@@ -31,6 +34,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3",
     "zustand": "^5.0.15"
@@ -40,6 +44,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "prisma": "^5.22.0",

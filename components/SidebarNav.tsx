@@ -72,6 +72,7 @@ export function SidebarBrand({ collapsed }: { collapsed?: boolean }) {
 interface SidebarUser {
     name: string | null;
     email: string;
+    paired: boolean | null;
 }
 
 /** Desktop-only fixed sidebar. Tracks the app's own light/dark surface tokens - see the --sidebar-* aliases in globals.css. */

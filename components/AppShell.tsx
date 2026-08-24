@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { Plus, Bell } from "lucide-react";
 import { LogLevel } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { getCurrentUser } from "@/lib/core/auth/user";
+import { LOCAL_SESSION_COOKIE, localSessionEnabled, verifyLocalSession } from "@/lib/core/auth/local-session";
 import { MqttConnectionManager } from "@/components/MqttConnectionManager";
 import { DesktopSidebar } from "@/components/SidebarNav";
 import { MobileNav } from "@/components/MobileNav";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { Button } from "@/components/ui/button";
 
 interface AppShellProps {
@@ -28,8 +31,14 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
         }),
         getCurrentUser(),
     ]);
+    // Null on the cloud instance, where pairing does not apply at all. Only the LAN
+    // instance issues offline credentials.
+    const paired = localSessionEnabled()
+        ? (await verifyLocalSession((await cookies()).get(LOCAL_SESSION_COOKIE)?.value)) !== null
+        : null;
+
     // AppShell only renders behind proxy.ts's auth gate, so a session always exists here.
-    const sidebarUser = { name: user?.name ?? null, email: user?.email ?? "" };
+    const sidebarUser = { name: user?.name ?? null, email: user?.email ?? "", paired };
 
     return (
         <div className="flex h-screen overflow-hidden">
@@ -40,6 +49,7 @@ export async function AppShell({ children, title, eyebrow }: AppShellProps) {
                 and scroll the whole page sideways instead of scrolling inside its own
                 overflow-x-auto container. */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <OfflineBanner />
                 <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4 lg:px-6">
                     <MobileNav user={sidebarUser} />
                     {title && (

@@ -4,6 +4,7 @@ import { LogLevel, LogCategory, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { isEdgeAuthorized } from "@/lib/core/edge-auth";
 import { dedupKeyFor } from "@/lib/incident-dedup";
+import { sendPushToDepartment } from "@/lib/services/push";
 
 /**
  * SystemLog sink for the edge worker: threshold-breach alerts (device_buffer.py)
@@ -118,6 +119,24 @@ export async function POST(req: NextRequest) {
         },
         update: {},
     });
+
+    // Only a genuinely new condition notifies. A fold above returns before this
+    // point, which is what stops a standing breach from buzzing a phone every 60
+    // seconds - the first one is news, the next two hundred are not.
+    //
+    // Awaited rather than fired and forgotten: on a serverless host the function
+    // can be frozen the moment the response is sent, and a detached promise would
+    // be killed mid-flight. The push services are fast, and sendPushToDepartment
+    // never throws.
+    if (level === LogLevel.CRITICAL) {
+        await sendPushToDepartment(departmentId, {
+            title: "Alerta crítico",
+            body: message,
+            tag: dedupKey ?? id,
+            url: "/incidents",
+            requireInteraction: true,
+        });
+    }
 
     return NextResponse.json({ success: true }, { status: 201 });
 }

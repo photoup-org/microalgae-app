@@ -97,6 +97,10 @@ export function CarbonateChart({ telemetry, enabledMetrics, medium = DEFAULT_MED
                                     borderRadius: 8,
                                     fontSize: 12,
                                 }}
+                                labelFormatter={(label, payload) => {
+                                    const time = payload?.[0]?.payload?.time;
+                                    return typeof time === "number" ? format(time, "dd/MM/yyyy HH:mm:ss") : String(label);
+                                }}
                                 // Dissolved CO2 sits under 1 mg/L at culture pH, so it
                                 // needs more decimals than total carbon does.
                                 formatter={(value, name) => [

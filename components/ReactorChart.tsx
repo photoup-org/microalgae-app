@@ -226,6 +226,13 @@ export function ReactorChart({
                                         borderRadius: "0.5rem",
                                         fontSize: "0.8rem",
                                     }}
+                                    // Runs can span days, so the bare clock label on the
+                                    // axis is ambiguous - a tooltip reading 16:00 gives no way
+                                    // to tell which day's 16:00 it is.
+                                    labelFormatter={(label, payload) => {
+                                        const time = payload?.[0]?.payload?.time;
+                                        return typeof time === "number" ? format(time, "dd/MM/yyyy HH:mm:ss") : String(label);
+                                    }}
                                     formatter={(value, name) => {
                                         const raw = String(name);
                                         const isLive = raw.endsWith(LIVE_SUFFIX);

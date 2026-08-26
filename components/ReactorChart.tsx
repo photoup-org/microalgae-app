@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+    Brush,
     CartesianGrid,
     Line,
     LineChart,
@@ -63,7 +64,11 @@ interface WideRow {
 const MAX_POINTS = 1000;
 /** Suffix for the not-yet-recorded companion series of each metric. */
 const LIVE_SUFFIX = "__live";
-/** Dots stop being readable past this many recorded points. */
+/**
+ * Dots stop being readable past this many recorded points IN VIEW. Counted over
+ * the brushed range, not the whole series, so zooming into a long run brings the
+ * per-measurement markers back instead of the chart staying a bare line.
+ */
 const MAX_DOTTED_POINTS = 150;
 /**
  * Missed intervals before a gap is drawn as a break in the line rather than a
@@ -138,13 +143,42 @@ export function ReactorChart({
 
     // In liveOnly mode the live stream IS the series, so it takes the "recorded"
     // slot and there is no pending tail to distinguish.
-    const { rows, savedCount, hasLiveTail } = useMemo(
+    const { rows, savedTimes, hasLiveTail } = useMemo(
         () =>
             liveOnly
                 ? buildRows(liveSeries ?? [], [], shown, dbInterval)
                 : buildRows(recorded, liveSeries ?? [], shown, dbInterval),
         [liveOnly, recorded, liveSeries, shown, dbInterval]
     );
+
+    // Held as timestamps, not row indices: the recorded series is re-fetched every
+    // dbInterval and the live tail grows between fetches, so an index range would
+    // silently slide to a different stretch of the run under the user.
+    const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+
+    const { startIndex, endIndex } = useMemo(() => {
+        const last = Math.max(0, rows.length - 1);
+        if (!zoom || rows.length === 0) return { startIndex: 0, endIndex: last };
+
+        const first = rows.findIndex((r) => r.time >= zoom.start);
+        let end = last;
+        while (end > 0 && rows[end].time > zoom.end) end--;
+
+        const start = first < 0 ? 0 : first;
+        // A zoom that now sits entirely past the data (possible after the window
+        // slid forward) falls back to the full extent rather than an empty plot.
+        return start >= end ? { startIndex: 0, endIndex: last } : { startIndex: start, endIndex: end };
+    }, [zoom, rows]);
+
+    function handleBrush(next: { startIndex?: number; endIndex?: number }) {
+        const start = next.startIndex ?? 0;
+        const end = next.endIndex ?? rows.length - 1;
+
+        // Full extent means "not zoomed" - stored as null so the view keeps
+        // following the run forward as new points arrive.
+        if (start <= 0 && end >= rows.length - 1) setZoom(null);
+        else setZoom({ start: rows[start].time, end: rows[end].time });
+    }
 
     function toggle(key: string) {
         setVisible((current) => {
@@ -159,7 +193,10 @@ export function ReactorChart({
         });
     }
 
-    const showDots = savedCount > 0 && savedCount <= MAX_DOTTED_POINTS;
+    const visibleSaved = rows
+        .slice(startIndex, endIndex + 1)
+        .filter((r) => savedTimes.has(r.time)).length;
+    const showDots = visibleSaved > 0 && visibleSaved <= MAX_DOTTED_POINTS;
 
     return (
         <section className="rounded-lg border border-border bg-surface p-5">
@@ -277,9 +314,26 @@ export function ReactorChart({
                                         isAnimationActive={false}
                                     />
                                 ))}
+                                <Brush
+                                    dataKey="label"
+                                    height={22}
+                                    travellerWidth={8}
+                                    startIndex={startIndex}
+                                    endIndex={endIndex}
+                                    onChange={handleBrush}
+                                    stroke="var(--border)"
+                                    fill="var(--surface)"
+                                />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
+
+                    {!showDots && (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            Demasiados pontos em vista para os marcar. Arraste as pegas da barra
+                            inferior para aproximar e ver cada medição gravada.
+                        </p>
+                    )}
 
                     {hasLiveTail && (
                         <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
@@ -323,7 +377,7 @@ function buildRows(
     live: SensorReading[],
     metrics: SchemaItem[],
     dbInterval?: number
-): { rows: WideRow[]; savedCount: number; hasLiveTail: boolean } {
+): { rows: WideRow[]; savedTimes: Set<number>; hasLiveTail: boolean } {
     const wanted = new Set(metrics.map((m) => m.key));
     const byTime = new Map<number, WideRow>();
     const savedTimes = new Set<number>();
@@ -372,11 +426,9 @@ function buildRows(
         dbInterval ?? DEFAULT_DB_INTERVAL_SECONDS
     );
     const rows = insertGapBreaks(ordered, expected).slice(-MAX_POINTS);
-    return {
-        rows,
-        savedCount: rows.filter((r) => savedTimes.has(r.time)).length,
-        hasLiveTail,
-    };
+    // savedTimes rather than a count: the dot threshold applies to whatever the
+    // brush has in view, which the caller alone knows.
+    return { rows, savedTimes, hasLiveTail };
 }
 
 /**

@@ -15,7 +15,7 @@ import { getExperimentTelemetryAction } from "@/actions/experiments";
 import { useMqttStore } from "@/hooks/useMqttStore";
 import { REACTOR_SCHEMA, SchemaItem } from "@/lib/reactor-schema";
 import { SensorReading } from "@/lib/types";
-import { DEFAULT_DB_INTERVAL_SECONDS } from "@/lib/experiment-defaults";
+import { DEFAULT_DB_INTERVAL_SECONDS, MAX_CHART_POINTS } from "@/lib/experiment-defaults";
 
 interface ReactorChartProps {
     /** Hardware id, which is how the live store keys devices. */
@@ -60,14 +60,6 @@ interface WideRow {
     [metric: string]: number | string;
 }
 
-/**
- * Only the most recent points are drawn, however long the run has been going.
- * Chosen so every point can carry a visible dot: at typical chart widths this is
- * a few pixels between markers, where a full multi-day series would pack them
- * into an unreadable band. The whole run is still on disk - this is a view
- * limit, not a retention one.
- */
-const MAX_POINTS = 200;
 /** Suffix for the not-yet-recorded companion series of each metric. */
 const LIVE_SUFFIX = "__live";
 /**
@@ -374,7 +366,7 @@ function buildRows(
         recordedStepSeconds(savedTimes) ?? 0,
         dbInterval ?? DEFAULT_DB_INTERVAL_SECONDS
     );
-    const rows = insertGapBreaks(ordered, expected).slice(-MAX_POINTS);
+    const rows = insertGapBreaks(ordered, expected).slice(-MAX_CHART_POINTS);
     return { rows, hasLiveTail };
 }
 

@@ -13,6 +13,7 @@ import {
 import { format } from "date-fns";
 import { FlaskConical } from "lucide-react";
 import { carbonateFromPh, DEFAULT_MEDIUM, MediumAssumptions } from "@/lib/carbonate";
+import { MAX_CHART_POINTS } from "@/lib/experiment-defaults";
 import { SensorReading } from "@/lib/types";
 
 interface CarbonateChartProps {
@@ -117,7 +118,7 @@ export function CarbonateChart({ telemetry, enabledMetrics, medium = DEFAULT_MED
                                 name="CO₂ dissolvido"
                                 stroke="var(--metric-co2)"
                                 strokeWidth={2}
-                                dot={false}
+                                dot={{ r: 2, fill: "var(--metric-co2)", strokeWidth: 0 }}
                                 isAnimationActive={false}
                                 connectNulls={false}
                             />
@@ -129,7 +130,7 @@ export function CarbonateChart({ telemetry, enabledMetrics, medium = DEFAULT_MED
                                 stroke="var(--metric-ph)"
                                 strokeWidth={2}
                                 strokeDasharray="4 3"
-                                dot={false}
+                                dot={{ r: 2, fill: "var(--metric-ph)", strokeWidth: 0 }}
                                 isAnimationActive={false}
                                 connectNulls={false}
                             />
@@ -177,5 +178,5 @@ function buildRows(telemetry: SensorReading[], medium: MediumAssumptions): Row[]
         });
     }
 
-    return rows;
+    return rows.slice(-MAX_CHART_POINTS);
 }

@@ -365,12 +365,43 @@ function buildRows(
     }
 
     const ordered = [...byTime.values()].sort((a, b) => a.time - b.time);
-    const rows = insertGapBreaks(ordered, dbInterval).slice(-MAX_POINTS);
+    // Never below dbInterval: in liveOnly mode the "recorded" series IS the 1s live
+    // stream, and a 3s gap threshold would shatter it on the slightest jitter.
+    const expected = Math.max(
+        recordedStepSeconds(savedTimes) ?? 0,
+        dbInterval ?? DEFAULT_DB_INTERVAL_SECONDS
+    );
+    const rows = insertGapBreaks(ordered, expected).slice(-MAX_POINTS);
     return {
         rows,
         savedCount: rows.filter((r) => savedTimes.has(r.time)).length,
         hasLiveTail,
     };
+}
+
+/**
+ * Real spacing of the recorded series, in seconds, measured off the data.
+ *
+ * getDeviceTelemetry downsamples server-side with an aggregateWindow that widens
+ * as a run gets longer, so recorded points are NOT dbInterval apart on a long run.
+ * Past roughly 36h the bucket grows beyond dbInterval * GAP_INTERVALS and every
+ * ordinary interval reads as an outage - the line becomes one break per point,
+ * which with dots already off past MAX_DOTTED_POINTS renders as nothing at all.
+ * Measuring the grid keeps the gap test honest whatever window the query picked.
+ *
+ * Undefined with fewer than two recorded points, where there is no spacing yet.
+ */
+function recordedStepSeconds(savedTimes: Set<number>): number | undefined {
+    if (savedTimes.size < 2) return undefined;
+
+    const times = [...savedTimes].sort((a, b) => a - b);
+    let smallest = Infinity;
+    for (let index = 1; index < times.length; index++) {
+        const delta = times[index] - times[index - 1];
+        if (delta > 0 && delta < smallest) smallest = delta;
+    }
+
+    return Number.isFinite(smallest) ? smallest / 1000 : undefined;
 }
 
 /**
@@ -387,9 +418,8 @@ function buildRows(
  * which is all that is available anyway, since a categorical axis cannot show a
  * gap proportional to its real duration.
  */
-function insertGapBreaks(ordered: WideRow[], dbInterval?: number): WideRow[] {
-    const expected = dbInterval ?? DEFAULT_DB_INTERVAL_SECONDS;
-    const threshold = expected * GAP_INTERVALS * 1000;
+function insertGapBreaks(ordered: WideRow[], expectedSeconds: number): WideRow[] {
+    const threshold = expectedSeconds * GAP_INTERVALS * 1000;
     const withBreaks: WideRow[] = [];
 
     for (const [index, row] of ordered.entries()) {

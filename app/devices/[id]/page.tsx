@@ -58,7 +58,7 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h1 className="text-2xl font-semibold tracking-tight break-words">{device.name}</h1>
-                        <DeviceStatusBadge status={device.status} />
+                        <DeviceStatusBadge status={device.status} serialNumber={device.serialNumber} />
                     </div>
                     {/* Serials are long and unbreakable, so they need an explicit
                         break opportunity or they set the page's minimum width. */}

@@ -6,7 +6,7 @@ import { useMqttStore } from "@/hooks/useMqttStore";
 import { isDeviceOnline } from "@/lib/device-status";
 
 const SLICES = [
-    { key: "active", label: "Ativo", color: "var(--brand)" },
+    { key: "active", label: "Online", color: "var(--brand)" },
     { key: "maintenance", label: "Manutenção", color: "var(--warning)" },
     { key: "offline", label: "Offline", color: "var(--muted-foreground)" },
 ] as const;
@@ -16,7 +16,7 @@ interface DeviceEntry {
     serialNumber: string;
 }
 
-/** Device status breakdown across the department's whole registered fleet. "Ativo" means the reactor is reachable right now, not merely commissioned - see isDeviceOnline. */
+/** Device status breakdown across the department's whole registered fleet. "Online" means the reactor is reachable right now, not merely commissioned - see isDeviceOnline. */
 export function InventoryDonut({ devices }: { devices: DeviceEntry[] }) {
     const liveStatus = useMqttStore((s) => s.deviceStatus);
 
@@ -46,7 +46,7 @@ export function InventoryDonut({ devices }: { devices: DeviceEntry[] }) {
                 <div className="relative size-28 shrink-0 rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(", ")})` : "var(--border)" }}>
                     <div className="absolute inset-3 flex flex-col items-center justify-center rounded-full bg-surface">
                         <span className="tabular text-2xl font-semibold">{total}</span>
-                        <span className="gauge-label text-muted-foreground">Sensores</span>
+                        <span className="gauge-label text-muted-foreground">Reatores</span>
                     </div>
                 </div>
                 <div className="space-y-1.5">

@@ -77,7 +77,7 @@ export default async function ProjectPage({ params }: PageProps<"/projects/[id]"
                                                 </Link>
                                             </TableCell>
                                             <TableCell className="tabular text-muted-foreground">{device.serialNumber}</TableCell>
-                                            <TableCell><DeviceStatusBadge status={device.status} /></TableCell>
+                                            <TableCell><DeviceStatusBadge status={device.status} serialNumber={device.serialNumber} /></TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>

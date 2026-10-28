@@ -68,9 +68,10 @@ export function ProjectsWidget({ projects }: { projects: ProjectEntry[] }) {
                         <p className="gauge-label text-muted-foreground">Alertas</p>
                         <p className="tabular mt-1 text-3xl font-semibold">{project.alertCount}</p>
                     </div>
-                    <div className="rounded-lg bg-metric-ph/10 p-3">
-                        <p className="gauge-label text-metric-ph">Sensores</p>
-                        <p className="tabular mt-1 text-3xl font-semibold text-metric-ph">{project.deviceCount}</p>
+                    {/* Neutral, like Alertas: the metric hues are reserved for their sensor. */}
+                    <div className="rounded-lg bg-secondary p-3">
+                        <p className="gauge-label text-muted-foreground">Reatores</p>
+                        <p className="tabular mt-1 text-3xl font-semibold">{project.deviceCount}</p>
                     </div>
                 </div>
 

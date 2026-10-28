@@ -59,8 +59,11 @@ export async function POST(req: NextRequest) {
     const { id, timestamp, level, category, action, message, metadata, deviceId, experimentId } = parsed.data;
 
     const device = deviceId
-        ? await prisma.device.findFirst({ where: { serialNumber: deviceId, departmentId }, select: { id: true } })
+        ? await prisma.device.findFirst({ where: { serialNumber: deviceId, departmentId }, select: { id: true, name: true } })
         : null;
+    // The worker only knows the hardware id, so its messages read "Dispositivo
+    // cmp4f4k... ficou offline". Operators know the reactor by its name.
+    const readableMessage = device?.name && deviceId ? message.replaceAll(deviceId, device.name) : message;
 
     const dedupKey = dedupKeyFor({ level, category, action, deviceId: device?.id ?? null, metadata });
 
@@ -87,7 +90,7 @@ export async function POST(req: NextRequest) {
                         lastSeenAt: timestamp,
                         // The newest reading is the interesting one - "still 8.9" beats
                         // whatever the value was when the excursion started.
-                        message,
+                        message: readableMessage,
                         metadata: {
                             ...((metadata ?? {}) as Record<string, unknown>),
                             lastEventId: id,
@@ -108,7 +111,7 @@ export async function POST(req: NextRequest) {
             level,
             category,
             action,
-            message,
+            message: readableMessage,
             metadata: metadata === undefined ? Prisma.JsonNull : (metadata as Prisma.InputJsonValue),
             // Never trust the caller's own departmentId - this is a shared, edge-authenticated
             // route, not a per-tenant session; the deployment's own env var is the only source of truth.
@@ -131,7 +134,7 @@ export async function POST(req: NextRequest) {
     if (level === LogLevel.CRITICAL) {
         await sendPushToDepartment(departmentId, {
             title: "Alerta crítico",
-            body: message,
+            body: readableMessage,
             tag: dedupKey ?? id,
             url: "/incidents",
             requireInteraction: true,

@@ -188,7 +188,7 @@ export function ReactorChart({
             </div>
 
             {rows.length < 2 ? (
-                <EmptyPlot />
+                <EmptyPlot live={liveEnabled} />
             ) : (
                 <>
                     <div className="h-80 w-full">
@@ -288,12 +288,17 @@ export function ReactorChart({
     );
 }
 
-function EmptyPlot() {
+/**
+ * Not live means the experiment is not running, so nothing more will arrive:
+ * telling the operator to wait for the node would be wrong.
+ */
+function EmptyPlot({ live }: { live: boolean }) {
     return (
         <div className="flex h-80 items-center justify-center rounded-md border border-dashed border-border">
             <p className="max-w-xs text-center text-sm text-muted-foreground">
-                Ainda sem dados suficientes. Os valores aparecem assim que o nó publicar
-                telemetria.
+                {live
+                    ? "Ainda sem dados suficientes. Os valores aparecem assim que o nó publicar telemetria."
+                    : "Não há leituras gravadas para esta experiência."}
             </p>
         </div>
     );

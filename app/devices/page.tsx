@@ -38,7 +38,8 @@ export default async function DevicesPage() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Nome</TableHead>
-                                <TableHead>Número de série</TableHead>
+                                {/* Hidden on phones so Estado, the column that matters, stays on screen. */}
+                                <TableHead className="hidden sm:table-cell">Número de série</TableHead>
                                 <TableHead>Estado</TableHead>
                                 <TableHead>Firmware</TableHead>
                                 <TableHead>Projeto</TableHead>
@@ -55,8 +56,8 @@ export default async function DevicesPage() {
                                                 {device.name}
                                             </Link>
                                         </TableCell>
-                                        <TableCell className="tabular text-muted-foreground">{device.serialNumber}</TableCell>
-                                        <TableCell><DeviceStatusBadge status={device.status} /></TableCell>
+                                        <TableCell className="tabular hidden text-muted-foreground sm:table-cell">{device.serialNumber}</TableCell>
+                                        <TableCell><DeviceStatusBadge status={device.status} serialNumber={device.serialNumber} /></TableCell>
                                         <TableCell>
                                             {device.firmwareVersion ? (
                                                 <span className="flex flex-col leading-tight">

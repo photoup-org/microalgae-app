@@ -5,7 +5,6 @@ import { DeviceStatus } from "@prisma/client";
 import { Droplets } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DeviceStatusBadge } from "@/components/DeviceStatusBadge";
-import { Badge } from "@/components/ui/badge";
 import { useMqttStore } from "@/hooks/useMqttStore";
 import { isDeviceOnline } from "@/lib/device-status";
 
@@ -25,7 +24,7 @@ export function DeviceListWidget({ devices }: { devices: DeviceEntry[] }) {
         <Card className="h-full">
             <CardHeader>
                 <CardTitle className="text-base">
-                    Sensores Online ({online}/{devices.length})
+                    Reatores online ({online}/{devices.length})
                 </CardTitle>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 space-y-1 overflow-y-auto">
@@ -33,7 +32,6 @@ export function DeviceListWidget({ devices }: { devices: DeviceEntry[] }) {
                     <p className="text-sm text-muted-foreground">Nenhum dispositivo registado.</p>
                 ) : (
                     devices.slice(0, 5).map((device) => {
-                        const offline = device.status === "ACTIVE" && !isDeviceOnline(device, liveStatus);
                         return (
                             <Link
                                 key={device.id}
@@ -45,7 +43,7 @@ export function DeviceListWidget({ devices }: { devices: DeviceEntry[] }) {
                                     <p className="truncate font-medium">{device.name}</p>
                                     <p className="tabular truncate text-xs text-muted-foreground">{device.serialNumber}</p>
                                 </div>
-                                {offline ? <Badge variant="secondary">Offline</Badge> : <DeviceStatusBadge status={device.status} />}
+                                <DeviceStatusBadge status={device.status} serialNumber={device.serialNumber} />
                             </Link>
                         );
                     })

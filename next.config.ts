@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+    // The LAN instance runs in a container on the Pi (see Dockerfile). Standalone
+    // output keeps that image to the traced runtime files instead of all of
+    // node_modules. Vercel ignores it.
+    output: "standalone",
     experimental: {
         // Holds and retries a navigation or Server Action that fails because the
         // network dropped, instead of throwing, and exposes the useOffline hook

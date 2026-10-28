@@ -1,44 +1,58 @@
 import Link from "next/link";
 import { ExperimentStatus, LogLevel } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
+import { getCalibrationRows } from "@/lib/calibration-rows";
+import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DeviceListWidget } from "@/components/DeviceListWidget";
-import { CalibrationOverviewWidget } from "@/components/CalibrationOverviewWidget";
-import { InventoryDonut } from "@/components/InventoryDonut";
-import { ProjectsWidget } from "@/components/ProjectsWidget";
-import { ExperimentElapsed } from "@/components/ExperimentElapsed";
-import { ExperimentQuickControls } from "@/components/ExperimentQuickControls";
 import { LogsWidget } from "@/components/LogsWidget";
-import { ExperimentStatusDonut } from "@/components/ExperimentStatusDonut";
-import { SensorChannelsWidget } from "@/components/SensorChannelsWidget";
-import { AttentionNeededWidget } from "@/components/AttentionNeededWidget";
+import { ReactorPanel, type ReactorPanelProps } from "@/components/ReactorPanel";
 
 export const dynamic = "force-dynamic";
 
+function formatDate(date: Date) {
+    return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function metricLabel(key: string) {
+    return REACTOR_SCHEMA.find((m) => m.key === key)?.label ?? key;
+}
+
+/**
+ * Reactor-first. The question an operator opens this page with is "are my
+ * reactors fine right now", so each reactor leads with its live readings, the run
+ * on it and anything overdue; fleet-wide counts and logs come after.
+ */
 export default async function DashboardPage() {
     const departmentId = process.env.DEPARTMENT_ID;
 
-    const [projects, devices, runningExperiments, recentLogs] = await Promise.all([
+    const [projects, devices, activeRuns, recentLogs, alertCounts] = await Promise.all([
         prisma.project.findMany({
             where: { departmentId },
-            include: {
-                createdBy: true,
-                devices: { select: { id: true } },
-                _count: { select: { experiments: true, devices: true } },
-            },
+            select: { id: true, name: true, _count: { select: { experiments: true, devices: true } } },
             orderBy: { createdAt: "desc" },
             take: 5,
         }),
         prisma.device.findMany({
             where: { departmentId },
-            select: { id: true, name: true, serialNumber: true, status: true, lastCalibrated: true, calibrationDueDate: true, config: true },
+            select: { id: true, name: true, serialNumber: true, status: true, config: true },
             orderBy: { name: "asc" },
         }),
         prisma.experiment.findMany({
-            where: { status: ExperimentStatus.RUNNING, project: { departmentId } },
-            include: { project: true, devices: true },
-            orderBy: { lastRunAt: "desc" },
+            where: {
+                status: { in: [ExperimentStatus.RUNNING, ExperimentStatus.PAUSED] },
+                project: { departmentId },
+            },
+            select: {
+                id: true,
+                name: true,
+                status: true,
+                projectId: true,
+                accumulatedSeconds: true,
+                lastRunAt: true,
+                project: { select: { name: true } },
+                devices: { select: { id: true } },
+            },
         }),
         prisma.systemLog.findMany({
             where: { departmentId, level: { in: [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] } },
@@ -46,95 +60,127 @@ export default async function DashboardPage() {
             take: 15,
             select: { id: true, level: true, category: true, message: true, timestamp: true, metadata: true },
         }),
+        prisma.systemLog.groupBy({
+            by: ["projectId"],
+            where: {
+                departmentId,
+                level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] },
+                acknowledgedAt: null,
+            },
+            _count: true,
+        }),
     ]);
 
-    const experimentStatusCounts = await prisma.experiment.groupBy({
-        by: ["status"],
-        where: { project: { departmentId } },
-        _count: true,
-    });
-    const experimentCountByStatus = Object.fromEntries(experimentStatusCounts.map((e) => [e.status, e._count]));
+    // Per channel, not Device.calibrationDueDate: that column cannot tell pH from
+    // turbidity, so an expired pH probe hid behind a valid turbidity date.
+    const calibrationRows = await getCalibrationRows(devices);
+    const now = new Date();
 
-    const alertCounts = await prisma.systemLog.groupBy({
-        by: ["projectId"],
-        where: {
-            departmentId,
-            projectId: { in: projects.map((p) => p.id) },
-            level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] },
-        },
-        _count: true,
+    const panels: ReactorPanelProps[] = devices.map((device) => {
+        const run = activeRuns.find((r) => r.devices.some((d) => d.id === device.id));
+        const attention: ReactorPanelProps["attention"] = [];
+
+        if (device.status === "MAINTENANCE") {
+            attention.push({ kind: "maintenance", text: "Em manutenção" });
+        }
+        for (const row of calibrationRows.filter((r) => r.deviceId === device.id)) {
+            const label = metricLabel(row.metric);
+            if (!row.calibratedAt) {
+                attention.push({ kind: "calibration", text: `${label} nunca foi calibrado` });
+            } else if (row.validUntil && new Date(row.validUntil) < now) {
+                attention.push({
+                    kind: "calibration",
+                    text: `Calibração de ${label} expirou a ${formatDate(new Date(row.validUntil))}`,
+                });
+            }
+        }
+
+        return {
+            device: {
+                id: device.id,
+                name: device.name,
+                serialNumber: device.serialNumber,
+                status: device.status,
+                sensors: ((device.config ?? {}) as { sensors?: string[] }).sensors ?? [],
+            },
+            run: run
+                ? {
+                      id: run.id,
+                      projectId: run.projectId,
+                      projectName: run.project.name,
+                      name: run.name,
+                      status: run.status as "RUNNING" | "PAUSED",
+                      accumulatedSeconds: run.accumulatedSeconds,
+                      lastRunAt: run.lastRunAt?.toISOString() ?? null,
+                  }
+                : null,
+            attention,
+        };
     });
-    const alertCountByProject = Object.fromEntries(alertCounts.map((a) => [a.projectId, a._count]));
+
+    const openAlertsByProject = Object.fromEntries(alertCounts.map((a) => [a.projectId, a._count]));
 
     return (
         <AppShell title="Dashboard">
             <div className="mx-auto max-w-screen-xl space-y-6">
-                {runningExperiments.length > 0 && (
+                <section aria-label="Reatores" className="space-y-4">
+                    {panels.length === 0 ? (
+                        <Card>
+                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                                Ainda não há reatores. Aparecem aqui assim que um nó ESP32 se liga pela primeira vez.
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        panels.map((panel) => <ReactorPanel key={panel.device.id} {...panel} />)
+                    )}
+                </section>
+
+                <div className="grid gap-6 lg:grid-cols-3">
+                    {/* Fixed height at every width: the card scrolls inside, so fifteen
+                        entries never push Projetos a screen below. */}
+                    <div className="h-80 lg:col-span-2">
+                        <LogsWidget logs={recentLogs} />
+                    </div>
+
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Experiências em curso</CardTitle>
+                            <CardTitle className="text-base">Projetos</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {runningExperiments.map((exp) => (
-                                // A row, not a Link: the controls are buttons, which cannot sit inside an anchor.
-                                <div
-                                    key={exp.id}
-                                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                                >
-                                    <p className="min-w-0 truncate">
+                        <CardContent className="space-y-1">
+                            {projects.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    Ainda não há projetos.{" "}
+                                    <Link href="/projects?new=1" className="font-medium text-primary hover:underline">
+                                        Criar projeto
+                                    </Link>
+                                </p>
+                            ) : (
+                                projects.map((project) => {
+                                    const openAlerts = openAlertsByProject[project.id] ?? 0;
+                                    return (
                                         <Link
-                                            href={`/projects/${exp.projectId}/experiments/${exp.id}`}
-                                            className="font-medium hover:underline"
+                                            key={project.id}
+                                            href={`/projects/${project.id}`}
+                                            className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-accent"
                                         >
-                                            {exp.name}
+                                            <span className="min-w-0">
+                                                <span className="block truncate font-medium">{project.name}</span>
+                                                <span className="tabular block text-xs text-muted-foreground">
+                                                    {project._count.devices} reator{project._count.devices === 1 ? "" : "es"},{" "}
+                                                    {project._count.experiments} experiência{project._count.experiments === 1 ? "" : "s"}
+                                                </span>
+                                            </span>
+                                            {openAlerts > 0 && (
+                                                <span className="tabular shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
+                                                    {openAlerts} por tratar
+                                                </span>
+                                            )}
                                         </Link>
-                                        <span className="text-muted-foreground"> · {exp.project.name}</span>
-                                    </p>
-                                    <div className="flex shrink-0 items-center gap-3">
-                                        <span className="tabular text-muted-foreground">
-                                            <ExperimentElapsed
-                                                accumulatedSeconds={exp.accumulatedSeconds}
-                                                lastRunAt={exp.lastRunAt?.toISOString() ?? null}
-                                            />
-                                        </span>
-                                        <span className="tabular hidden text-muted-foreground sm:inline">
-                                            {exp.devices.length} dispositivo{exp.devices.length === 1 ? "" : "s"}
-                                        </span>
-                                        <ExperimentQuickControls experimentId={exp.id} name={exp.name} />
-                                    </div>
-                                </div>
-                            ))}
+                                    );
+                                })
+                            )}
                         </CardContent>
                     </Card>
-                )}
-
-                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-3">
-                    <ProjectsWidget
-                        projects={projects.map((p) => ({
-                            id: p.id,
-                            name: p.name,
-                            description: p.description,
-                            deviceIds: p.devices.map((d) => d.id),
-                            createdAt: p.createdAt,
-                            createdByName: p.createdBy?.name ?? null,
-                            experimentCount: p._count.experiments,
-                            deviceCount: p._count.devices,
-                            alertCount: alertCountByProject[p.id] ?? 0,
-                        }))}
-                    />
-                    <LogsWidget logs={recentLogs} />
-                    <InventoryDonut devices={devices} />
-                </div>
-
-                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-3">
-                    <DeviceListWidget devices={devices} />
-                    <CalibrationOverviewWidget devices={devices} />
-                    <ExperimentStatusDonut counts={experimentCountByStatus} />
-                </div>
-
-                <div className="grid gap-6 lg:auto-rows-[280px] lg:grid-cols-2">
-                    <SensorChannelsWidget devices={devices} />
-                    <AttentionNeededWidget devices={devices} />
                 </div>
             </div>
         </AppShell>

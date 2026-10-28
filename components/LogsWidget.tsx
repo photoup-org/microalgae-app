@@ -156,7 +156,9 @@ export function LogsWidget({ logs }: { logs: LogEntry[] }) {
                                         <Icon className="size-4" aria-hidden />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm">{log.message}</p>
+                                        {/* Two lines rather than truncate: hardware ids are one unbreakable word and
+                                            pushed the row past the card on phones. */}
+                                        <p className="line-clamp-2 text-sm [overflow-wrap:anywhere]">{log.message}</p>
                                         <p className="tabular text-xs text-muted-foreground">
                                             <span className="font-medium text-foreground">{formatDate(log.timestamp)}</span>
                                             {" - "}

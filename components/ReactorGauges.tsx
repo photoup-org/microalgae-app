@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useMqttStore } from "@/hooks/useMqttStore";
-import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
+import { REACTOR_SCHEMA, presentMetric } from "@/lib/reactor-schema";
 import { SensorReading } from "@/lib/types";
 import { MetricGauge } from "@/components/MetricGauge";
 
@@ -23,10 +23,12 @@ interface ReactorGaugesProps {
      * after it's stopped, or shows readings before it's ever started.
      */
     live?: boolean;
+    /** Channels calibrated on this device; the others show raw sensor units. Omit if unknown. */
+    calibrated?: string[];
 }
 
 /** Current-value readout row, fed by the live MQTT stream with a fallback to the last saved point. */
-export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: liveEnabled = true }: ReactorGaugesProps) {
+export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: liveEnabled = true, calibrated }: ReactorGaugesProps) {
     const metrics = REACTOR_SCHEMA.filter(
         (m) => enabledMetrics.length === 0 || enabledMetrics.includes(m.key)
     );
@@ -60,18 +62,19 @@ export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: l
             {metrics.map((metric) => {
                 const raw = live?.[metric.key] ?? lastSaved[metric.key] ?? null;
                 const numeric = raw === null ? null : Number(raw);
-                const value = numeric === null || Number.isNaN(numeric) ? null : numeric;
+                const shown = presentMetric(metric, calibrated);
+                const value = numeric === null || Number.isNaN(numeric) ? null : numeric * shown.factor;
 
                 return (
                     <MetricGauge
                         key={metric.key}
                         label={metric.label}
-                        unit={metric.unit}
+                        unit={shown.uncalibrated ? `${shown.unit} · não calibrado` : shown.unit}
                         value={value}
-                        min={metric.min}
-                        max={metric.max}
+                        min={shown.min}
+                        max={shown.max}
                         color={metric.color}
-                        series={traces[metric.key]}
+                        series={traces[metric.key]?.map((v) => v * shown.factor)}
                     />
                 );
             })}

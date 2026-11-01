@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { calibratedMetrics } from "@/lib/reactor-schema";
 import { ChevronLeft, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/core/prisma";
 import { getDeviceTelemetry } from "@/lib/db/influx";
@@ -147,12 +148,13 @@ export default async function ExperimentPage({ params }: PageProps<"/projects/[i
                                 </p>
                             )}
 
-                            <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} live={experiment.status === "RUNNING"} />
+                            <ReactorGauges serialNumber={device.serialNumber} telemetry={telemetry} enabledMetrics={sensors} live={experiment.status === "RUNNING"} calibrated={calibratedMetrics(device.calibrationConfig)} />
 
                             <ReactorChart
                                 serialNumber={device.serialNumber}
                                 telemetry={telemetry}
                                 enabledMetrics={sensors}
+                                calibrated={calibratedMetrics(device.calibrationConfig)}
                                 live={experiment.status === "RUNNING"}
                                 experimentId={experiment.id}
                                 dbInterval={dbInterval}

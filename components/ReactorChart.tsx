@@ -13,7 +13,7 @@ import {
 import { format } from "date-fns";
 import { getExperimentTelemetryAction } from "@/actions/experiments";
 import { useMqttStore } from "@/hooks/useMqttStore";
-import { REACTOR_SCHEMA, SchemaItem } from "@/lib/reactor-schema";
+import { REACTOR_SCHEMA, SchemaItem, MetricPresentation, presentMetric } from "@/lib/reactor-schema";
 import { SensorReading } from "@/lib/types";
 import { DEFAULT_DB_INTERVAL_SECONDS, MAX_CHART_POINTS } from "@/lib/experiment-defaults";
 
@@ -54,6 +54,8 @@ interface ReactorChartProps {
     liveOnly?: boolean;
     /** Rendered at the start of the metric toggle row, e.g. a title and reactor picker. */
     heading?: ReactNode;
+    /** Channels calibrated on this device; the others plot in raw sensor units. Omit if unknown. */
+    calibrated?: string[];
 }
 
 interface WideRow {
@@ -72,12 +74,15 @@ const LIVE_SUFFIX = "__live";
 const GAP_INTERVALS = 3;
 
 /**
- * All four channels on one time axis.
+ * One small panel per channel, stacked on a shared time axis.
  *
- * The four metrics have incompatible ranges (pH 0-14, °C 0-50, NTU 0-100,
- * ppm 0-2000), so each gets its OWN Y axis and is scaled independently. Drawing
- * four axis gutters would eat the plot, so only the two leading visible metrics
- * render their axis; the rest stay hidden but still scale their line correctly.
+ * The channels have incompatible units and ranges (pH, °C, turbidity, CO2 in %),
+ * so overlaying them forces either hidden axes or one series flattening the rest.
+ * Stacked panels give every channel its own labelled axis; `syncId` keeps the
+ * hover crosshair on the same instant in all of them, and only the bottom panel
+ * draws the time labels. Each Y axis follows its own data with a margin rather
+ * than the schema's full range, so a drift from pH 6.8 to 7.1 stays visible -
+ * the full range is the gauges' job.
  *
  * Two series per metric, deliberately: the solid line is what InfluxDB actually
  * holds (one point per acquisition interval), and the faded dashed line is only
@@ -95,6 +100,7 @@ export function ReactorChart({
     dbInterval,
     liveOnly = false,
     heading,
+    calibrated,
 }: ReactorChartProps) {
     const available = useMemo(
         () =>
@@ -109,6 +115,10 @@ export function ReactorChart({
     const liveSeries = liveEnabled ? chartSeries : undefined;
 
     const shown = available.filter((m) => visible.has(m.key));
+    const presentation = useMemo(
+        () => Object.fromEntries(available.map((m) => [m.key, presentMetric(m, calibrated)])),
+        [available, calibrated]
+    );
 
     // Polling advances the recorded series between server renders; the prop stays
     // the source of truth, so a real render (navigation, status change) resets to
@@ -141,9 +151,9 @@ export function ReactorChart({
     const { rows, hasLiveTail } = useMemo(
         () =>
             liveOnly
-                ? buildRows(liveSeries ?? [], [], shown, dbInterval)
-                : buildRows(recorded, liveSeries ?? [], shown, dbInterval),
-        [liveOnly, recorded, liveSeries, shown, dbInterval]
+                ? buildRows(liveSeries ?? [], [], shown, presentation, dbInterval)
+                : buildRows(recorded, liveSeries ?? [], shown, presentation, dbInterval),
+        [liveOnly, recorded, liveSeries, shown, presentation, dbInterval]
     );
 
     function toggle(key: string) {
@@ -195,89 +205,17 @@ export function ReactorChart({
                 <EmptyPlot live={liveEnabled} />
             ) : (
                 <>
-                    <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                                <XAxis
-                                    dataKey="label"
-                                    minTickGap={40}
-                                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                                    stroke="var(--border)"
-                                />
-                                {shown.map((metric, index) => (
-                                    <YAxis
-                                        key={metric.key}
-                                        yAxisId={metric.key}
-                                        domain={[metric.min, metric.max]}
-                                        orientation={index === 1 ? "right" : "left"}
-                                        // Only the first two get a gutter; the others scale invisibly.
-                                        hide={index > 1}
-                                        width={48}
-                                        tick={{ fontSize: 11, fill: metric.color }}
-                                        stroke="var(--border)"
-                                    />
-                                ))}
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: "var(--surface)",
-                                        border: "1px solid var(--border)",
-                                        borderRadius: "0.5rem",
-                                        fontSize: "0.8rem",
-                                    }}
-                                    // Runs can span days, so the bare clock label on the
-                                    // axis is ambiguous - a tooltip reading 16:00 gives no way
-                                    // to tell which day's 16:00 it is.
-                                    labelFormatter={(label, payload) => {
-                                        const time = payload?.[0]?.payload?.time;
-                                        return typeof time === "number" ? format(time, "dd/MM/yyyy HH:mm:ss") : String(label);
-                                    }}
-                                    formatter={(value, name) => {
-                                        const raw = String(name);
-                                        const isLive = raw.endsWith(LIVE_SUFFIX);
-                                        const key = isLive ? raw.slice(0, -LIVE_SUFFIX.length) : raw;
-                                        const metric = REACTOR_SCHEMA.find((m) => m.key === key);
-                                        const numeric = Number(value);
-                                        const text = Number.isNaN(numeric) ? "—" : numeric.toFixed(2);
-
-                                        return [
-                                            `${text}${metric?.unit ? ` ${metric.unit}` : ""}`,
-                                            `${metric?.label ?? key}${isLive ? " (por gravar)" : ""}`,
-                                        ];
-                                    }}
-                                />
-                                {shown.map((metric) => (
-                                    <Line
-                                        key={metric.key}
-                                        yAxisId={metric.key}
-                                        type="monotone"
-                                        dataKey={metric.key}
-                                        stroke={metric.color}
-                                        strokeWidth={2}
-                                        dot={{ r: 2, fill: metric.color, strokeWidth: 0 }}
-                                        // A dropped channel leaves a gap rather than a
-                                        // straight line through missing data.
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                    />
-                                ))}
-                                {shown.map((metric) => (
-                                    <Line
-                                        key={`${metric.key}${LIVE_SUFFIX}`}
-                                        yAxisId={metric.key}
-                                        type="monotone"
-                                        dataKey={`${metric.key}${LIVE_SUFFIX}`}
-                                        stroke={metric.color}
-                                        strokeOpacity={0.3}
-                                        strokeWidth={1.5}
-                                        strokeDasharray="4 3"
-                                        dot={false}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                    />
-                                ))}
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="space-y-1">
+                        {shown.map((metric, index) => (
+                            <MetricPanel
+                                key={metric.key}
+                                metric={metric}
+                                presentation={presentation[metric.key]}
+                                rows={rows}
+                                syncId={`reactor-${serialNumber}`}
+                                showTime={index === shown.length - 1}
+                            />
+                        ))}
                     </div>
 
                     {hasLiveTail && (
@@ -289,6 +227,130 @@ export function ReactorChart({
                 </>
             )}
         </section>
+    );
+}
+
+/** Fraction of the visible spread added above and below the data. */
+const AXIS_PAD = 0.1;
+
+/**
+ * Y range that follows the data with a margin. A flat series (a steady reactor)
+ * gets a band around its value instead of a zero-height axis.
+ */
+function niceDomain(rows: WideRow[], key: string): [number, number] | ["auto", "auto"] {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const row of rows) {
+        for (const k of [key, `${key}${LIVE_SUFFIX}`]) {
+            const v = row[k];
+            if (typeof v === "number" && Number.isFinite(v)) {
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            }
+        }
+    }
+    if (!Number.isFinite(lo)) return ["auto", "auto"];
+    const span = hi - lo;
+    const pad = span > 0 ? span * AXIS_PAD : Math.max(Math.abs(hi) * 0.05, 0.01);
+    return [lo - pad, hi + pad];
+}
+
+function formatTick(value: number): string {
+    const abs = Math.abs(value);
+    if (abs >= 100) return value.toFixed(0);
+    if (abs >= 10) return value.toFixed(1);
+    return value.toFixed(2);
+}
+
+interface MetricPanelProps {
+    metric: SchemaItem;
+    presentation: MetricPresentation;
+    rows: WideRow[];
+    syncId: string;
+    /** Only the bottom panel carries the time labels; the rest share its axis. */
+    showTime: boolean;
+}
+
+/** One channel's strip: recorded series solid, not-yet-recorded live tail dashed. */
+function MetricPanel({ metric, presentation, rows, syncId, showTime }: MetricPanelProps) {
+    const domain = niceDomain(rows, metric.key);
+    const unit = presentation.unit;
+
+    return (
+        <div>
+            <p className="gauge-label mb-0.5 flex items-center gap-1.5 text-muted-foreground">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: metric.color }} aria-hidden />
+                {metric.label}
+                {unit && <span className="text-xs">({unit})</span>}
+                {presentation.uncalibrated && <span className="text-xs">· não calibrado</span>}
+            </p>
+            <div className={showTime ? "h-36 w-full" : "h-28 w-full"}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={rows} syncId={syncId} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis
+                            dataKey="label"
+                            hide={!showTime}
+                            minTickGap={40}
+                            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                            stroke="var(--border)"
+                        />
+                        <YAxis
+                            domain={domain}
+                            allowDataOverflow
+                            width={48}
+                            tickCount={4}
+                            tickFormatter={formatTick}
+                            tick={{ fontSize: 11, fill: metric.color }}
+                            stroke="var(--border)"
+                        />
+                        <Tooltip
+                            contentStyle={{
+                                backgroundColor: "var(--surface)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "0.5rem",
+                                fontSize: "0.8rem",
+                            }}
+                            // Runs can span days, so the bare clock label on the
+                            // axis is ambiguous - a tooltip reading 16:00 gives no way
+                            // to tell which day's 16:00 it is.
+                            labelFormatter={(label, payload) => {
+                                const time = payload?.[0]?.payload?.time;
+                                return typeof time === "number" ? format(time, "dd/MM/yyyy HH:mm:ss") : String(label);
+                            }}
+                            formatter={(value, name) => {
+                                const isLive = String(name).endsWith(LIVE_SUFFIX);
+                                const numeric = Number(value);
+                                const text = Number.isNaN(numeric) ? "—" : formatTick(numeric);
+                                return [`${text}${unit ? ` ${unit}` : ""}`, `${metric.label}${isLive ? " (por gravar)" : ""}`];
+                            }}
+                        />
+                        <Line
+                            type="monotone"
+                            dataKey={metric.key}
+                            stroke={metric.color}
+                            strokeWidth={2}
+                            dot={{ r: 2, fill: metric.color, strokeWidth: 0 }}
+                            // A dropped channel leaves a gap rather than a
+                            // straight line through missing data.
+                            connectNulls={false}
+                            isAnimationActive={false}
+                        />
+                        <Line
+                            type="monotone"
+                            dataKey={`${metric.key}${LIVE_SUFFIX}`}
+                            stroke={metric.color}
+                            strokeOpacity={0.3}
+                            strokeWidth={1.5}
+                            strokeDasharray="4 3"
+                            dot={false}
+                            connectNulls={false}
+                            isAnimationActive={false}
+                        />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
     );
 }
 
@@ -326,8 +388,12 @@ function buildRows(
     historical: SensorReading[],
     live: SensorReading[],
     metrics: SchemaItem[],
+    presentation: Record<string, MetricPresentation>,
     dbInterval?: number
 ): { rows: WideRow[]; hasLiveTail: boolean } {
+    // Wire units -> display units (e.g. CO2 ppm -> %), once, so axes, tooltips
+    // and gap handling all work on the numbers the operator reads.
+    const scale = (key: string, value: number) => value * (presentation[key]?.factor ?? 1);
     const wanted = new Set(metrics.map((m) => m.key));
     const byTime = new Map<number, WideRow>();
     const savedTimes = new Set<number>();
@@ -353,9 +419,9 @@ function buildRows(
         if (Number.isNaN(time)) continue;
 
         const row = rowAt(time);
-        row[reading.metricType] = reading.value;
+        row[reading.metricType] = scale(reading.metricType, reading.value);
         savedTimes.add(time);
-        if (time === newestSaved) row[`${reading.metricType}${LIVE_SUFFIX}`] = reading.value;
+        if (time === newestSaved) row[`${reading.metricType}${LIVE_SUFFIX}`] = scale(reading.metricType, reading.value);
     }
 
     let hasLiveTail = false;
@@ -364,7 +430,7 @@ function buildRows(
         const time = new Date(reading.timestamp).getTime();
         if (Number.isNaN(time) || time <= newestSaved) continue;
 
-        rowAt(time)[`${reading.metricType}${LIVE_SUFFIX}`] = reading.value;
+        rowAt(time)[`${reading.metricType}${LIVE_SUFFIX}`] = scale(reading.metricType, reading.value);
         hasLiveTail = true;
     }
 

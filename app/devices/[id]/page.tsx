@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { calibratedMetrics } from "@/lib/reactor-schema";
 import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/core/prisma";
 import { getCalibrationRows } from "@/lib/calibration-rows";
@@ -90,12 +91,13 @@ export default async function DevicePage({ params }: PageProps<"/devices/[id]">)
                 {/* Live telemetry only - no InfluxDB history. This page is a window on
                     what the node is reporting right now; the recorded series belongs to
                     an experiment, which is what scopes it to a run. */}
-                <ReactorGauges serialNumber={device.serialNumber} telemetry={[]} enabledMetrics={sensors} />
+                <ReactorGauges serialNumber={device.serialNumber} telemetry={[]} enabledMetrics={sensors} calibrated={calibratedMetrics(device.calibrationConfig)} />
 
                 <ReactorChart
                     serialNumber={device.serialNumber}
                     telemetry={[]}
                     enabledMetrics={sensors}
+                    calibrated={calibratedMetrics(device.calibrationConfig)}
                     liveOnly
                 />
 

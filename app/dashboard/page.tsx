@@ -1,7 +1,7 @@
 import { ExperimentStatus, LogLevel } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { getCalibrationRows } from "@/lib/calibration-rows";
-import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
+import { REACTOR_SCHEMA, calibratedMetrics } from "@/lib/reactor-schema";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { LogsWidget } from "@/components/LogsWidget";
@@ -48,7 +48,7 @@ export default async function DashboardPage() {
             }),
             prisma.device.findMany({
                 where: { departmentId },
-                select: { id: true, name: true, serialNumber: true, status: true, config: true },
+                select: { id: true, name: true, serialNumber: true, status: true, config: true, calibrationConfig: true },
                 orderBy: { name: "asc" },
             }),
             prisma.experiment.findMany({
@@ -120,6 +120,7 @@ export default async function DashboardPage() {
                 serialNumber: device.serialNumber,
                 status: device.status,
                 sensors: ((device.config ?? {}) as { sensors?: string[] }).sensors ?? [],
+                calibrated: calibratedMetrics(device.calibrationConfig),
             },
             run: run
                 ? {
@@ -190,6 +191,7 @@ export default async function DashboardPage() {
                                         serialNumber: p.device.serialNumber,
                                         name: p.device.name,
                                         sensors: p.device.sensors,
+                                        calibrated: p.device.calibrated,
                                     }))}
                                 />
                             </div>

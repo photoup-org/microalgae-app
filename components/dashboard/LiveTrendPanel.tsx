@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ReactorChart } from "@/components/ReactorChart";
 
 interface LiveTrendPanelProps {
-    reactors: { serialNumber: string; name: string | null; sensors: string[] }[];
+    reactors: { serialNumber: string; name: string | null; sensors: string[]; calibrated: string[] }[];
 }
 
 /**
@@ -46,6 +46,7 @@ export function LiveTrendPanel({ reactors }: LiveTrendPanelProps) {
             serialNumber={reactor.serialNumber}
             telemetry={[]}
             enabledMetrics={reactor.sensors}
+            calibrated={reactor.calibrated}
             liveOnly
             heading={heading}
         />

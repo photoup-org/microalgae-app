@@ -15,6 +15,8 @@ export interface ReactorPanelProps {
         serialNumber: string;
         status: DeviceStatus;
         sensors: string[];
+        /** Channels with a calibration; the others show raw sensor units. */
+        calibrated: string[];
     };
     /** The run currently driving this reactor, if any. At most one - see createExperimentAction. */
     run: {
@@ -75,7 +77,7 @@ export function ReactorPanel({ device, run, attention }: ReactorPanelProps) {
                 )}
             </div>
 
-            <ReactorGauges serialNumber={device.serialNumber} telemetry={[]} enabledMetrics={device.sensors} />
+            <ReactorGauges serialNumber={device.serialNumber} telemetry={[]} enabledMetrics={device.sensors} calibrated={device.calibrated} />
 
             {attention.length > 0 && (
                 <ul className="space-y-1 text-sm">

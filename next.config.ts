@@ -3,8 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
     // The LAN instance runs in a container on the Pi (see Dockerfile). Standalone
     // output keeps that image to the traced runtime files instead of all of
-    // node_modules. Vercel ignores it.
-    output: "standalone",
+    // node_modules. Only the Docker build sets NEXT_OUTPUT: Vercel (Next 16.3.1)
+    // deployments began failing once standalone was on - onBuildComplete could not find
+    // .next/next-server.js.nft.json and the deployment failed.
+    output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
     experimental: {
         // Holds and retries a navigation or Server Action that fails because the
         // network dropped, instead of throwing, and exposes the useOffline hook

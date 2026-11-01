@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
     CartesianGrid,
     Line,
@@ -52,6 +52,8 @@ interface ReactorChartProps {
      * chart would render dashed.
      */
     liveOnly?: boolean;
+    /** Rendered at the start of the metric toggle row, e.g. a title and reactor picker. */
+    heading?: ReactNode;
 }
 
 interface WideRow {
@@ -92,6 +94,7 @@ export function ReactorChart({
     experimentId,
     dbInterval,
     liveOnly = false,
+    heading,
 }: ReactorChartProps) {
     const available = useMemo(
         () =>
@@ -159,6 +162,7 @@ export function ReactorChart({
     return (
         <section className="rounded-lg border border-border bg-surface p-5">
             <div className="mb-4 flex flex-wrap items-center gap-2">
+                {heading}
                 {available.map((metric) => {
                     const isOn = visible.has(metric.key);
                     return (

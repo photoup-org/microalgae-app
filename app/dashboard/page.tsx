@@ -1,14 +1,20 @@
-import Link from "next/link";
 import { ExperimentStatus, LogLevel } from "@prisma/client";
 import { prisma } from "@/lib/core/prisma";
 import { getCalibrationRows } from "@/lib/calibration-rows";
 import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
 import { AppShell } from "@/components/AppShell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { LogsWidget } from "@/components/LogsWidget";
 import { ReactorPanel, type ReactorPanelProps } from "@/components/ReactorPanel";
+import type { ValveControl } from "@/components/ValvePanel";
+import { StatusStrip } from "@/components/dashboard/StatusStrip";
+import { LiveTrendPanel } from "@/components/dashboard/LiveTrendPanel";
+import { ValveSummary } from "@/components/dashboard/ValveSummary";
+import { IncidentsPanel, CalibrationPanel, RecentExperimentsPanel, ProjectsPanel } from "@/components/dashboard/ListPanels";
 
 export const dynamic = "force-dynamic";
+
+const DAY_MS = 86_400_000;
 
 function formatDate(date: Date) {
     return date.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -19,57 +25,69 @@ function metricLabel(key: string) {
 }
 
 /**
- * Reactor-first. The question an operator opens this page with is "are my
- * reactors fine right now", so each reactor leads with its live readings, the run
- * on it and anything overdue; fleet-wide counts and logs come after.
+ * Reactor-first, but dense. Top to bottom: a one-line status strip, each reactor's
+ * live readings beside what is waiting to be handled, the live trend beside the
+ * activity feed, then the supporting lists - valve, calibrations, experiments,
+ * projects. Every panel links to the page where its full version lives.
  */
 export default async function DashboardPage() {
     const departmentId = process.env.DEPARTMENT_ID;
+    const openIncidentWhere = {
+        departmentId,
+        level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] },
+        acknowledgedAt: null,
+    };
 
-    const [projects, devices, activeRuns, recentLogs, alertCounts] = await Promise.all([
-        prisma.project.findMany({
-            where: { departmentId },
-            select: { id: true, name: true, _count: { select: { experiments: true, devices: true } } },
-            orderBy: { createdAt: "desc" },
-            take: 5,
-        }),
-        prisma.device.findMany({
-            where: { departmentId },
-            select: { id: true, name: true, serialNumber: true, status: true, config: true },
-            orderBy: { name: "asc" },
-        }),
-        prisma.experiment.findMany({
-            where: {
-                status: { in: [ExperimentStatus.RUNNING, ExperimentStatus.PAUSED] },
-                project: { departmentId },
-            },
-            select: {
-                id: true,
-                name: true,
-                status: true,
-                projectId: true,
-                accumulatedSeconds: true,
-                lastRunAt: true,
-                project: { select: { name: true } },
-                devices: { select: { id: true } },
-            },
-        }),
-        prisma.systemLog.findMany({
-            where: { departmentId, level: { in: [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] } },
-            orderBy: { timestamp: "desc" },
-            take: 15,
-            select: { id: true, level: true, category: true, message: true, timestamp: true, metadata: true },
-        }),
-        prisma.systemLog.groupBy({
-            by: ["projectId"],
-            where: {
-                departmentId,
-                level: { in: [LogLevel.WARN, LogLevel.ERROR, LogLevel.CRITICAL] },
-                acknowledgedAt: null,
-            },
-            _count: true,
-        }),
-    ]);
+    const [projects, devices, activeRuns, recentLogs, alertCounts, openIncidents, openIncidentCount, recentExperiments] =
+        await Promise.all([
+            prisma.project.findMany({
+                where: { departmentId },
+                select: { id: true, name: true, _count: { select: { experiments: true, devices: true } } },
+                orderBy: { createdAt: "desc" },
+                take: 5,
+            }),
+            prisma.device.findMany({
+                where: { departmentId },
+                select: { id: true, name: true, serialNumber: true, status: true, config: true },
+                orderBy: { name: "asc" },
+            }),
+            prisma.experiment.findMany({
+                where: {
+                    status: { in: [ExperimentStatus.RUNNING, ExperimentStatus.PAUSED] },
+                    project: { departmentId },
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    projectId: true,
+                    accumulatedSeconds: true,
+                    lastRunAt: true,
+                    project: { select: { name: true } },
+                    devices: { select: { id: true } },
+                },
+            }),
+            prisma.systemLog.findMany({
+                where: { departmentId, level: { in: [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] } },
+                orderBy: { timestamp: "desc" },
+                take: 15,
+                select: { id: true, level: true, category: true, message: true, timestamp: true, metadata: true },
+            }),
+            prisma.systemLog.groupBy({ by: ["projectId"], where: openIncidentWhere, _count: true }),
+            prisma.systemLog.findMany({
+                where: openIncidentWhere,
+                orderBy: { timestamp: "desc" },
+                take: 6,
+                select: { id: true, level: true, message: true, timestamp: true },
+            }),
+            prisma.systemLog.count({ where: openIncidentWhere }),
+            prisma.experiment.findMany({
+                where: { project: { departmentId } },
+                orderBy: { startDate: "desc" },
+                take: 5,
+                select: { id: true, name: true, status: true, projectId: true, startDate: true, project: { select: { name: true } } },
+            }),
+        ]);
 
     // Per channel, not Device.calibrationDueDate: that column cannot tell pH from
     // turbidity, so an expired pH probe hid behind a valid turbidity date.
@@ -120,67 +138,109 @@ export default async function DashboardPage() {
 
     const openAlertsByProject = Object.fromEntries(alertCounts.map((a) => [a.projectId, a._count]));
 
+    // Never-calibrated first, then soonest to expire: the order to work through them.
+    const dueRank = (row: { calibrated: boolean; validUntil: Date | null }) =>
+        !row.calibrated ? -Infinity : (row.validUntil?.getTime() ?? Infinity);
+    const calibrationSchedule = calibrationRows
+        .map((row) => ({
+            key: `${row.deviceId}-${row.metric}`,
+            deviceId: row.deviceId,
+            deviceName: row.deviceName ?? row.serialNumber,
+            channel: metricLabel(row.metric),
+            calibrated: row.calibratedAt !== null,
+            validUntil: row.validUntil ? new Date(row.validUntil) : null,
+        }))
+        .sort((a, b) => dueRank(a) - dueRank(b));
+    const dueBy = now.getTime() + 14 * DAY_MS;
+    const calibrationsDue = calibrationSchedule.filter((row) => dueRank(row) < dueBy).length;
+
     return (
         <AppShell title="Dashboard">
-            <div className="mx-auto max-w-screen-xl space-y-6">
-                <section aria-label="Reatores" className="space-y-4">
-                    {panels.length === 0 ? (
-                        <Card>
-                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                Ainda não há reatores. Aparecem aqui assim que um nó ESP32 se liga pela primeira vez.
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        panels.map((panel) => <ReactorPanel key={panel.device.id} {...panel} />)
-                    )}
-                </section>
+            <div className="mx-auto max-w-[1600px] space-y-4">
+                <StatusStrip
+                    devices={devices.map((d) => ({ serialNumber: d.serialNumber, status: d.status }))}
+                    runningCount={activeRuns.filter((r) => r.status === ExperimentStatus.RUNNING).length}
+                    openIncidents={openIncidentCount}
+                    calibrationsDue={calibrationsDue}
+                />
 
-                <div className="grid gap-6 lg:grid-cols-3">
-                    {/* Fixed height at every width: the card scrolls inside, so fifteen
-                        entries never push Projetos a screen below. */}
-                    <div className="h-80 lg:col-span-2">
-                        <LogsWidget logs={recentLogs} />
-                    </div>
-
+                {panels.length === 0 ? (
                     <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Projetos</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-1">
-                            {projects.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">
-                                    Ainda não há projetos.{" "}
-                                    <Link href="/projects?new=1" className="font-medium text-primary hover:underline">
-                                        Criar projeto
-                                    </Link>
-                                </p>
-                            ) : (
-                                projects.map((project) => {
-                                    const openAlerts = openAlertsByProject[project.id] ?? 0;
-                                    return (
-                                        <Link
-                                            key={project.id}
-                                            href={`/projects/${project.id}`}
-                                            className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-accent"
-                                        >
-                                            <span className="min-w-0">
-                                                <span className="block truncate font-medium">{project.name}</span>
-                                                <span className="tabular block text-xs text-muted-foreground">
-                                                    {project._count.devices} reator{project._count.devices === 1 ? "" : "es"},{" "}
-                                                    {project._count.experiments} experiência{project._count.experiments === 1 ? "" : "s"}
-                                                </span>
-                                            </span>
-                                            {openAlerts > 0 && (
-                                                <span className="tabular shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
-                                                    {openAlerts} por tratar
-                                                </span>
-                                            )}
-                                        </Link>
-                                    );
-                                })
-                            )}
+                        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                            Ainda não há reatores. Aparecem aqui assim que um nó ESP32 se liga pela primeira vez.
                         </CardContent>
                     </Card>
+                ) : (
+                    <>
+                        <div className="grid gap-4 xl:grid-cols-12">
+                            <section aria-label="Reatores" className="space-y-4 xl:col-span-8">
+                                {panels.map((panel) => (
+                                    <ReactorPanel key={panel.device.id} {...panel} />
+                                ))}
+                            </section>
+                            <div className="xl:col-span-4">
+                                <IncidentsPanel incidents={openIncidents} total={openIncidentCount} />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-12">
+                            <div className="min-w-0 xl:col-span-8">
+                                <LiveTrendPanel
+                                    reactors={panels.map((p) => ({
+                                        serialNumber: p.device.serialNumber,
+                                        name: p.device.name,
+                                        sensors: p.device.sensors,
+                                    }))}
+                                />
+                            </div>
+                            {/* Out of flow at xl so the chart alone sets the row height and the
+                                feed scrolls inside it; in flow, fifteen entries would stretch the
+                                row and pad the chart with dead space. */}
+                            <div className="relative h-96 xl:col-span-4 xl:h-auto">
+                                <div className="h-full xl:absolute xl:inset-0">
+                                    <LogsWidget logs={recentLogs} />
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {devices.length > 0 && (
+                        <ValveSummary
+                            reactors={devices.map((d) => ({
+                                id: d.id,
+                                serialNumber: d.serialNumber,
+                                name: d.name,
+                                control: ((d.config ?? {}) as { control?: ValveControl }).control ?? null,
+                            }))}
+                        />
+                    )}
+                    <CalibrationPanel
+                        rows={calibrationSchedule.slice(0, 6).map((row) => ({
+                            ...row,
+                            daysLeft: row.validUntil ? Math.ceil((row.validUntil.getTime() - now.getTime()) / DAY_MS) : null,
+                        }))}
+                    />
+                    <RecentExperimentsPanel
+                        experiments={recentExperiments.map((e) => ({
+                            id: e.id,
+                            projectId: e.projectId,
+                            name: e.name,
+                            projectName: e.project.name,
+                            status: e.status,
+                            startedAt: e.startDate,
+                        }))}
+                    />
+                    <ProjectsPanel
+                        projects={projects.map((p) => ({
+                            id: p.id,
+                            name: p.name,
+                            devices: p._count.devices,
+                            experiments: p._count.experiments,
+                            openAlerts: openAlertsByProject[p.id] ?? 0,
+                        }))}
+                    />
                 </div>
             </div>
         </AppShell>

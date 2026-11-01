@@ -6,6 +6,8 @@ import { REACTOR_SCHEMA } from "@/lib/reactor-schema";
 import { SensorReading } from "@/lib/types";
 import { MetricGauge } from "@/components/MetricGauge";
 
+const TRACE_POINTS = 60;
+
 interface ReactorGaugesProps {
     /** Hardware id, which is how the live store keys devices. */
     serialNumber: string;
@@ -30,6 +32,18 @@ export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: l
     );
     const liveValues = useMqttStore((s) => s.liveValues[serialNumber]);
     const live = liveEnabled ? liveValues : undefined;
+    const liveSeries = useMqttStore((s) => s.chartSeries[serialNumber]);
+
+    // Last TRACE_POINTS live readings per channel, for each gauge's trace.
+    const traces = useMemo(() => {
+        const byMetric: Record<string, number[]> = {};
+        if (!liveEnabled || !liveSeries) return byMetric;
+        for (const reading of liveSeries) {
+            (byMetric[reading.metricType] ??= []).push(reading.value);
+        }
+        for (const key of Object.keys(byMetric)) byMetric[key] = byMetric[key].slice(-TRACE_POINTS);
+        return byMetric;
+    }, [liveEnabled, liveSeries]);
 
     const lastSaved = useMemo(() => {
         const latest: Record<string, number> = {};
@@ -57,6 +71,7 @@ export function ReactorGauges({ serialNumber, telemetry, enabledMetrics, live: l
                         min={metric.min}
                         max={metric.max}
                         color={metric.color}
+                        series={traces[metric.key]}
                     />
                 );
             })}

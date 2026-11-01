@@ -33,54 +33,56 @@
  * collides with shadcn's own component styling.
  */
 :root {
+  /* Refined light (2026-10-28). Neutrals carry a faint green-grey, the colour of
+     culture water in glass, rather than pure grey; the metric hues stay the only
+     saturated things on screen.
+     --brand is a text-safe teal (4.6:1 on white) for links, buttons and active
+     nav. The original #2ac5c1 was about 2:1 as text and failed contrast. */
   --surface: #ffffff;
-  --surface-muted: #eef1f5;
-  --border: #e2e6ec;
-  --muted-foreground: #64748b;
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --brand: #2ac5c1;
-  --brand-foreground: #0f172a;
+  --surface-muted: #f3f6f6;
+  --border: #dce3e3;
+  --muted-foreground: #5b6b6a;
+  --accent: #eef3f3;
+  --accent-foreground: #162423;
+  --brand: #0e8f8a;
+  --brand-foreground: #ffffff;
   --culture: #8fbf3f;
   --danger: #c4432b;
-  --warning: #b9791a;
-  /* Decoupled from --brand on purpose - brand is now teal, but "success" still
-     needs to read as green so it doesn't collide with the teal CO2 metric or
-     read as merely "on-brand" instead of "good". */
-  --success: #3f7d53;
+  --warning: #a86a0f;
+  /* Decoupled from --brand on purpose: "success" must read as green, not as
+     merely on-brand, and must not collide with the teal CO2 metric. */
+  --success: #2f7a49;
 
   --metric-ph: #6b57d6;
   --metric-temp: #d9612b;
-  --metric-turbidity: #7a9b2e;
+  --metric-turbidity: #6f8f24;
   --metric-co2: #2b7f94;
 
-  --background: #f4f6f8;
-  --foreground: #111827;
+  --background: #eef2f2;
+  --foreground: #162423;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #162423;
   --popover: #ffffff;
-  --popover-foreground: #111827;
+  --popover-foreground: #162423;
   --primary: var(--brand);
   --primary-foreground: var(--brand-foreground);
-  --secondary: #eef1f5;
-  --secondary-foreground: #111827;
-  --muted: #eef1f5;
+  --secondary: #eef3f3;
+  --secondary-foreground: #162423;
+  --muted: #eef3f3;
   --destructive: #c4432b;
-  --input: #d7dde5;
-  --ring: #2ac5c1;
+  --input: #cfd8d8;
+  --ring: #0e8f8a;
   --chart-1: var(--metric-ph);
   --chart-2: var(--metric-temp);
   --chart-3: var(--metric-turbidity);
   --chart-4: var(--metric-co2);
   --chart-5: var(--culture);
-  --radius: 0.5rem;
-  /* Sidebar now matches the app's own light/dark surface, app-gui-style, instead
-     of staying a fixed dark bezel - aliased so the theme toggle carries it for free. */
+  --radius: 0.625rem;
   --sidebar: var(--surface);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: var(--brand-foreground);
-  --sidebar-accent: var(--surface-muted);
+  --sidebar-accent: var(--accent);
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--brand);
@@ -225,13 +227,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Gauge captions: tracked, condensed, instrument-label register. */
+/* Captions for readouts and small headings. Sentence case in the body face:
+   the tracked all-caps mono it replaced was loud at a distance and hard to read
+   in Portuguese, whose accents it crowded. Monospace stays for numbers only. */
 .gauge-label {
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  line-height: 1rem;
 }
 
 @keyframes pulse-dot {

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Activity } from "lucide-react";
 import { useMqttStore } from "@/hooks/useMqttStore";
 import { calibrateDeviceAction, CalibrationPoint } from "@/actions/calibration";
 import { REACTOR_CALIBRATION } from "@/lib/calibration-config";
 import { SCHEMA_BY_KEY } from "@/lib/reactor-schema";
+import { buildModelCalibration, MODEL_LABELS } from "@/lib/calibration-models";
 
 const DEPARTMENT_ID = process.env.NEXT_PUBLIC_DEPARTMENT_ID ?? "";
 
@@ -54,7 +55,14 @@ export function CalibrationWizard({
         });
     }, [serialNumber, metricKey, subscribe]);
 
+    // Live preview of the model the server will fit and store (it refits on save).
+    const preview = useMemo(
+        () => (config?.fit === "auto" && points.length >= 2 ? buildModelCalibration(points) : null),
+        [config?.fit, points]
+    );
+
     if (!config || !metric) return null;
+    const auto = config.fit === "auto";
 
     async function submit(finalPoints: CalibrationPoint[]) {
         setSubmitting(true);
@@ -97,6 +105,12 @@ export function CalibrationWizard({
         setReference(String(config.defaultReferences[next.length] ?? ""));
     }
 
+    function removePoint(index: number) {
+        const next = points.filter((_, i) => i !== index);
+        setPoints(next);
+        setStep(next.length);
+    }
+
     const canFinishEarly = points.length >= config.minPoints && points.length < config.maxPoints;
 
     return (
@@ -111,8 +125,14 @@ export function CalibrationWizard({
                     Calibrar {metric.label}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Passo {step + 1} de {config.maxPoints}
-                    {config.minPoints !== config.maxPoints && ` (mínimo ${config.minPoints})`}
+                    {auto ? (
+                        <>Ponto {step + 1} (mínimo {config.minPoints}; mais pontos permitem escolher melhor o modelo)</>
+                    ) : (
+                        <>
+                            Passo {step + 1} de {config.maxPoints}
+                            {config.minPoints !== config.maxPoints && ` (mínimo ${config.minPoints})`}
+                        </>
+                    )}
                 </p>
 
                 <div className="mt-5 rounded-lg border border-border bg-surface-muted p-5 text-center">
@@ -131,7 +151,9 @@ export function CalibrationWizard({
                     )}
                 </div>
 
-                <p className="mt-4 text-sm text-muted-foreground">{config.instructions[step]}</p>
+                <p className="mt-4 text-sm text-muted-foreground">
+                    {config.instructions[Math.min(step, config.instructions.length - 1)]}
+                </p>
 
                 <div className="mt-4">
                     <label htmlFor="calibration-reference" className="text-sm font-medium">
@@ -155,12 +177,44 @@ export function CalibrationWizard({
                                 className="tabular flex justify-between text-xs text-muted-foreground"
                             >
                                 <span>Ponto {index + 1}</span>
-                                <span>
+                                <span className="flex items-center gap-2">
                                     {point.raw.toFixed(3)} → {point.reference} {config.unit}
+                                    <button
+                                        type="button"
+                                        onClick={() => removePoint(index)}
+                                        disabled={submitting}
+                                        aria-label={`Remover ponto ${index + 1}`}
+                                        className="rounded px-1 text-muted-foreground hover:text-destructive"
+                                    >
+                                        ×
+                                    </button>
                                 </span>
                             </li>
                         ))}
                     </ul>
+                )}
+
+                {preview && (
+                    <div className="mt-3 rounded-md border border-border p-3 text-xs">
+                        {preview.ok ? (
+                            <>
+                                <p className="font-medium">
+                                    Modelo escolhido: {MODEL_LABELS[preview.config.kind]} · R² {preview.config.r2.toFixed(4)} · erro
+                                    médio {preview.config.rmse.toFixed(3)} {config.unit}
+                                </p>
+                                <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                                    {preview.candidates.map((c) => (
+                                        <li key={c.kind} className="tabular flex justify-between">
+                                            <span>{MODEL_LABELS[c.kind]}</span>
+                                            <span>{c.rejected ?? `R² ${c.r2.toFixed(4)}`}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : (
+                            <p className="text-warning">{preview.error}</p>
+                        )}
+                    </div>
                 )}
 
                 <div className="mt-6 flex justify-end gap-2">
@@ -177,7 +231,7 @@ export function CalibrationWizard({
                             disabled={submitting}
                             className="rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-muted"
                         >
-                            Finalizar com {points.length}
+                            {auto ? `Guardar calibração (${points.length} pontos)` : `Finalizar com ${points.length}`}
                         </button>
                     )}
                     <button

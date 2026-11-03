@@ -44,6 +44,13 @@ export function DeviceStatusBadge({ status, serialNumber }: { status: DeviceStat
             </Badge>
         );
     }
+    if (liveStatus[serialNumber] === "stale") {
+        return (
+            <Badge variant="secondary" title="Ligado ao broker, mas sem leituras recentes.">
+                Sem dados
+            </Badge>
+        );
+    }
     return isDeviceOnline({ serialNumber, status }, liveStatus) ? (
         <Badge variant="default">Online</Badge>
     ) : (

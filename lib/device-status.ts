@@ -8,6 +8,11 @@ import type { DeviceStatus } from "@prisma/client";
  * "offline" via the Last Will when the connection drops
  * (esp32-sensor-firmware/src/lib/mqtt_client.py).
  *
+ * The store also downgrades "online" to "stale" when a node stops sending
+ * readings (hooks/useMqttStore.ts), since the Last Will only fires after the TCP
+ * keepalive times out and never for a node that is connected but stuck. "stale"
+ * is not "online", so such a reactor reads as offline here.
+ *
  * This must fail CLOSED - absence of evidence is not evidence of liveness. Three
  * separate situations leave `liveStatus[serialNumber]` undefined:
  *

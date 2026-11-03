@@ -6,6 +6,8 @@ import { prisma } from "@/lib/core/prisma";
 import { publishMQTTMessage } from "@/lib/core/mqtt";
 import { requireUser } from "@/lib/core/auth/user";
 import { SCHEMA_BY_KEY } from "@/lib/reactor-schema";
+import { REACTOR_CALIBRATION } from "@/lib/calibration-config";
+import { buildModelCalibration, type ModelCalibration } from "@/lib/calibration-models";
 import type { ActionResult } from "@/lib/action-result";
 
 export interface CalibrationPoint {
@@ -93,6 +95,9 @@ export async function calibrateDeviceAction(
     if (!SCHEMA_BY_KEY[metric]) {
         return { success: false, error: `Métrica desconhecida: ${metric}.` };
     }
+    if (!Array.isArray(points) || points.length > 100) {
+        return { success: false, error: "Número de pontos inválido (máximo 100)." };
+    }
     if (!points.every((p) => Number.isFinite(p.raw) && Number.isFinite(p.reference))) {
         return { success: false, error: "Pontos de calibração inválidos." };
     }
@@ -103,7 +108,16 @@ export async function calibrateDeviceAction(
     });
     if (!device) return { success: false, error: "Dispositivo não encontrado." };
 
-    const transform = buildTransform(points);
+    // Fitted again here rather than trusted from the browser's preview.
+    let transform:
+        | { ok: true; config: { m: number; b: number } | { segments: Segment[] } | ModelCalibration }
+        | { ok: false; error: string };
+    if (REACTOR_CALIBRATION[metric]?.fit === "auto") {
+        const fitted = buildModelCalibration(points);
+        transform = fitted.ok ? { ok: true, config: fitted.config } : fitted;
+    } else {
+        transform = buildTransform(points);
+    }
     if (!transform.ok) return { success: false, error: transform.error };
 
     const oldConfig = (device.calibrationConfig ?? {}) as Record<string, unknown>;

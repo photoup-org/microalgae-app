@@ -45,7 +45,8 @@ export const REACTOR_SCHEMA: SchemaItem[] = [
       raw: { unit: "V", min: -0.5, max: 0.5 } },
     { key: "temp", label: "Temperatura", unit: "°C", min: 0, max: 50, color: "var(--metric-temp)", requires: [] },
     // Raw: probe output volts, high in clear water and falling as turbidity rises.
-    { key: "turbidity", label: "Turbidez", unit: "NTU", min: 0, max: 100, color: "var(--metric-turbidity)", requires: [],
+    // Calibrated against spectrophotometer readings into optical density (OD).
+    { key: "turbidity", label: "Turbidez", unit: "OD", min: 0, max: 3, color: "var(--metric-turbidity)", requires: [],
       raw: { unit: "V", min: 0, max: 4.5 } },
     // "gasoso" because this is the headspace gas sensor, and the carbonate chart
     // derives a DISSOLVED CO2 series alongside it. `key` stays "co2" - it is an

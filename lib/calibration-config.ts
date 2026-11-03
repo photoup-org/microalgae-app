@@ -13,6 +13,12 @@ export interface CalibrationConfig {
     /** What the operator should physically do at each step. */
     instructions: string[];
     unit: string;
+    /**
+     * "segments": piecewise-linear through the points (pH, a handful of buffers).
+     * "auto": least-squares fit of several models, best one by AICc
+     * (lib/calibration-models.ts) - for curves measured against many samples.
+     */
+    fit: "segments" | "auto";
 }
 
 export const REACTOR_CALIBRATION: Record<string, CalibrationConfig> = {
@@ -26,16 +32,21 @@ export const REACTOR_CALIBRATION: Record<string, CalibrationConfig> = {
             "Opcional: enxagúe e mergulhe na solução tampão pH 10.00 para melhorar a linearidade na gama alcalina.",
         ],
         unit: "pH",
+        fit: "segments",
     },
+    // Turbidity probe voltage -> optical density of the culture, measured on a
+    // spectrophotometer (e.g. OD750). As many samples as the operator wants; the
+    // model (linear, logarithmic, polynomial) is chosen from the data.
     turbidity: {
-        minPoints: 1,
-        maxPoints: 2,
-        defaultReferences: [0, 100],
+        minPoints: 2,
+        maxPoints: 30,
+        defaultReferences: [0],
         instructions: [
-            "Mergulhe o sensor em água limpa (0 NTU) e aguarde a leitura estabilizar.",
-            "Opcional: mergulhe num padrão de formazina de valor conhecido para definir a inclinação.",
+            "Mergulhe o sensor em meio de cultura sem células (OD = 0) e aguarde a leitura estabilizar.",
+            "Mergulhe o sensor numa amostra de cultura, aguarde a leitura estabilizar e introduza a OD medida no espectrofotómetro. Repita com várias densidades, cobrindo a gama que vai usar (mais pontos permitem escolher melhor o modelo).",
         ],
-        unit: "NTU",
+        unit: "OD",
+        fit: "auto",
     },
 };
 
